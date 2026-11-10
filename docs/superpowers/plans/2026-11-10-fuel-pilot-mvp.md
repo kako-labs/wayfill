@@ -104,3 +104,16 @@
 - [ ] 합성·실제·미확인 범위와 실패 결과를 문서화한다.
 - [ ] API 키·개인 경로·캐시·SDK 바이너리가 Git에 없는지 검사한다.
 - [ ] 팀 검토용 PR을 만들고 검증 결과와 미확인 Pleos 항목을 적는다.
+
+## Implementation Rulings
+
+- 활성 목적지가 없을 때는 주변 주유소 추천으로 전환한다. 목적지가 있으면 주변 모드로 섞지 않는다.
+- 동률 후보는 경로상 거리 또는 직선거리, 이름 순으로 안정적으로 정렬한다.
+- 영업 정보가 신선하지 않으면 Open 가점을 주지 않고 Unknown과 확인 필요 문구를 사용한다.
+- 알림 접근 범위는 기본 20km 또는 15분이며 FreshnessPolicy와 AlertPolicy로 주입한다.
+- routeId와 stationId 조합을 사용해 같은 활성 경로에서 같은 추천을 한 번만 노출한다.
+- NavigationRouteRepository는 setDestination과 addWaypoint를 분리하고 requestId, timeout, callback correlation을 계약에 포함한다.
+- VehicleMotionRepository를 추가해 정차 중 설정 변경을 검증한다.
+- 실제 Pleos SDK 바이너리가 없으면 real 빌드는 Unsupported를 명시하고 합성 데이터로 자동 대체하지 않는다.
+- 1024x768 검증은 Compose 테스트의 고정 viewport와 스크린샷 산출물로 수행한다.
+- tools/pleos_probe.py는 공개 SDK 계약을 검증하는 최소 수동 도구로만 두고, 확인되지 않은 SDK 호출을 구현하지 않는다.
