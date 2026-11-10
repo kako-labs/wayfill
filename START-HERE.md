@@ -1,11 +1,17 @@
-# 내일 회사 노트북에서 시작하기
+# 다른 기기와 두 세션에서 이어가기
 
 FUEL PILOT의 승인된 문구와 뽀동이 모션을 화면과 코드로 묶었습니다.
 
 ## 1. 받기
 
+[승인 버전 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/podong-ui-approved-2026-11-10)에서 `fuel-pilot-ui-kit-20261110.zip`을 받아 압축을 풀면 됩니다. 저장소는 비공개이므로 접근 권한이 있는 GitHub 계정으로 로그인하세요. ZIP에는 웹 UI, 모션 파일, Android 소스 모듈과 빌드된 AAR, 두 세션 인계 문서가 함께 있습니다.
+
+Git으로 받을 때도 아래 고정 태그를 지정하면 다른 기기에서 같은 승인본을 받습니다. 태그 checkout은 고정 스냅샷이므로 수정하기 전에 새 브랜치를 만듭니다.
+
 ```powershell
-git clone --branch ui/podong-delivery-20261110 https://github.com/kako-labs/fuel-pilot.git
+git clone --branch podong-ui-approved-2026-11-10 https://github.com/kako-labs/fuel-pilot.git fuel-pilot-approved
+cd fuel-pilot-approved
+git switch -c integrate/podong-approved
 ```
 
 이미 이 저장소가 있다면 현재 작업을 먼저 보존하고 브랜치를 전환하거나, 다른 폴더에 위 명령으로 새로 받으세요. 이 브랜치는 기존 앱 소스에 강제로 덮어쓰는 패치가 아닙니다.
@@ -44,7 +50,11 @@ git clone --branch ui/podong-delivery-20261110 https://github.com/kako-labs/fuel
 
 원하는 경우 빌드된 `release-artifacts/fuel-pilot-ui-debug.aar`도 쓸 수 있습니다. AAR 단독으로는 Compose 의존성을 가져오지 않으므로 연결 문서의 의존성을 앱에 추가해야 합니다. 소스 모듈 복사를 권장합니다.
 
-## 4. 앱 개발 세션에 붙여 넣을 인계문
+## 4. 두 세션에 각각 전달하기
+
+UI 세션에는 [UI-SESSION-HANDOFF.md](docs/UI-SESSION-HANDOFF.md)의 첫 문장을, 앱 개발 세션에는 [APP-SESSION-HANDOFF.md](docs/APP-SESSION-HANDOFF.md)의 첫 문장을 그대로 붙여 넣으세요. 두 문서는 같은 고정 태그와 [승인 기준](docs/APPROVED-BASELINE.md)을 가리킵니다. 후속 작업은 [SESSION-PROGRESS.md](docs/SESSION-PROGRESS.md)에 기록합니다.
+
+아래는 기존 앱 연결 계약의 짧은 요약입니다.
 
 > 이 저장소의 START-HERE.md와 docs/ANDROID-INTEGRATION.md, docs/PODONG-BEHAVIOR.md를 먼저 읽어줘. web/index.html은 상태별 기준 UI이고 android/fuel-pilot-ui는 빌드 확인된 Compose 라이브러리야. 기존 앱의 차량·주유소 추천·내비 경유지 로직을 보존하면서 UI만 연결해줘. FuelUiState의 motion은 실제 차량 상태를 반영하고 기본 Unknown을 유지해. 주유 완료는 검증된 이벤트 ID로 전달하고 seenIds와 설정을 ViewModel/저장소에 보존해 중복 인사를 막아줘. onRequestWaypoint는 요청일 뿐이므로 내비 SDK 성공 응답에서만 RouteAdded를 보내줘. 내비 지도 위 표시 권한을 확인하기 전에는 순정 지도 오버레이가 된다고 가정하지 말고 앱 내부 표면부터 연결해줘. 화면 수치는 예시이므로 하드코딩하지 마. 작업 후 앱 빌드와 주유 완료/중복 이벤트/출발 중단/데이터 미수신을 확인하고, 작업 브랜치와 인계 내용을 GitHub에 보존해줘.
 

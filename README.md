@@ -2,7 +2,13 @@
 
 주유가 필요한 이유를 먼저 설명하고, 메시지마다 뽀동이가 함께하고 정차·주유 후에는 귀엽게 반응하는 UI 전달본입니다.
 
-**내일 회사 PC에서는 [START-HERE.md](START-HERE.md)부터 읽으세요.**
+**다른 기기에서는 [승인 버전 다운로드](https://github.com/kako-labs/fuel-pilot/releases/tag/podong-ui-approved-2026-11-10) → [START-HERE.md](START-HERE.md)부터 읽으세요.**
+
+- [UI 세션에 붙여 넣을 인계문](docs/UI-SESSION-HANDOFF.md)
+- [앱 개발 세션에 붙여 넣을 인계문](docs/APP-SESSION-HANDOFF.md)
+- [사용자 승인 기준과 파일 매핑](docs/APPROVED-BASELINE.md)
+
+고정 태그는 `podong-ui-approved-2026-11-10`입니다. 이 PC의 `127.0.0.1` 주소 없이도 ZIP을 풀어 두 HTML 파일을 브라우저에서 열 수 있습니다.
 
 - `web/animation-lab.html`: 새로 그린 5동작·72프레임 애니메이션 비교
 - `web/index.html`: 설치 없이 더블클릭하는 오프라인 인터랙티브 데모, 11개 상황
