@@ -12,7 +12,7 @@ git clone --branch ui/podong-delivery-20261110 https://github.com/kako-labs/fuel
 
 ## 2. 화면부터 보기
 
-`web/index.html`을 Chrome/Edge에서 더블클릭해 여세요. 인터넷·Node·Python 없이 동작합니다.
+`web/animation-lab.html`에서 새 동작 5종을 먼저 보고, `web/index.html`을 Chrome/Edge에서 더블클릭해 전체 UI를 여세요. 인터넷·Node·Python 없이 동작합니다.
 
 상단 버튼은 실제 앱 메뉴가 아니라 시연 상황 선택 도구입니다.
 
@@ -52,4 +52,4 @@ git clone --branch ui/podong-delivery-20261110 https://github.com/kako-labs/fuel
 
 - 웹은 독립 실행되는 UI 데모입니다. 지도는 시연용 그림이고 차량·유가·주유소 API를 호출하지 않습니다.
 - Android 라이브러리는 빌드와 상태 단위 테스트로 검증했습니다. 회사 앱과의 통합이나 실제 차량 실행까지 끝난 것은 아닙니다.
-- 포즈 전환과 짧은 코드 애니메이션으로 원본 동작을 연결했습니다. Rive/Lottie 리깅을 새로 제작한 파일은 아닙니다.
+- GPT로 새로 그린 40프레임을 웹과 Android에서 실제 프레임 애니메이션으로 재생합니다. Rive/Lottie 리깅 파일은 아닙니다.

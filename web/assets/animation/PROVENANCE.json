@@ -1,0 +1,7 @@
+{
+  "provider": "codex",
+  "generation": "GPT image rows; 5 motions, 8 newly drawn frames per motion",
+  "pipeline": "prepare \u2192 gen-set \u2192 component extraction \u2192 compose-atlas \u2192 export-pngs \u2192 animated WebP",
+  "runFolder": "D:\\hackathon-tmp\\fuel-pilot-animation-work\\podong-v2",
+  "sourceAtlasSha256": "6bc4474e5905bd66a7514b387ec7a132a2dfca5c93518fe097e9817225205c4a"
+}

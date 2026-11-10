@@ -1,7 +1,5 @@
 package dev.fuelpilot.ui
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -11,16 +9,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
 import java.util.Locale
 
 private val Graphite = Color(0xFF171512)
@@ -73,6 +67,7 @@ fun FuelPilotUi(
             onRequestWaypoint(it.id)
         }
     }
+    CompositionLocalProvider(LocalPodongStill provides (!state.characterEnabled || state.reduceMotion)) {
     MaterialTheme(colorScheme = darkColorScheme(primary = Gold, onPrimary = Color(0xFF241703), surface = Graphite, onSurface = White, background = Color(0xFF0C0B09))) {
         BoxWithConstraints(modifier.fillMaxSize()) {
             mapContent()
@@ -117,8 +112,8 @@ fun FuelPilotUi(
                         }
                         Screen.Refuel -> {
                             val active = state.celebration?.takeIf { playfulCharacter }
-                            if (active != null && celebrationPose(active, System.nanoTime() / 1_000_000L) != null) CelebrationHeader(active, state.reduceMotion, onEvent)
-                            else PodongIntro(when (state.refuel?.let(::refuelVariant)) { Variant.Small -> "냠, 간식!"; Variant.Full -> "빵빵해요!"; Variant.Recovery -> "살았다…!"; else -> "든든하게 채웠어요" }, calm = !playfulCharacter)
+                            if (active != null) CelebrationHeader(active, state.reduceMotion, onEvent)
+                            else PodongIntro(when (state.refuel?.let(::refuelVariant)) { Variant.Small -> "냠, 간식!"; Variant.Full -> "빵빵해요!"; Variant.Recovery -> "살았다…!"; else -> "든든하게 채웠어요" }, calm = !playfulCharacter, clip = "calm")
                             Panel(showIdentity = false) {
                                 Text("✓ 주유 완료", color = GoldText, fontSize = 19.sp)
                                 Copy("연료를 채웠어요", 32)
@@ -152,6 +147,8 @@ fun FuelPilotUi(
     }
 }
 
+}
+
 @Composable private fun Panel(showIdentity: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
     Surface(color = Graphite, shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -176,39 +173,22 @@ fun FuelPilotUi(
 }
 @Composable private fun MessageIdentity() {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Image(painterResource(R.drawable.podong_wave), "차분하게 안내하는 뽀동이", Modifier.width(64.dp).height(52.dp))
+        PodongSprite(modifier = Modifier.width(64.dp).height(52.dp))
         Text("뽀동이가 알려드려요", color = Muted, fontSize = 16.sp)
     }
 }
-@Composable private fun PodongIntro(text: String, calm: Boolean = false) {
+@Composable private fun PodongIntro(text: String, calm: Boolean = false, clip: String = "recommend") {
     Row(Modifier.fillMaxWidth().heightIn(min = if (calm) 100.dp else 145.dp), verticalAlignment = Alignment.Bottom) {
         Surface(Modifier.weight(1f).padding(bottom = 20.dp), color = Color(0xFFFFF4DF), shape = RoundedCornerShape(20.dp)) { Text(text, Modifier.padding(18.dp), color = Color(0xFF2E1E06), fontSize = 23.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold) }
-        Image(painterResource(R.drawable.podong_wave), contentDescription = if (calm) "차분한 뽀동이" else "곁에 있는 뽀동이", modifier = Modifier.width(if (calm) 80.dp else 150.dp).height(if (calm) 76.dp else 130.dp))
+        PodongSprite(if (calm) "calm" else clip, Modifier.width(if (calm) 80.dp else 150.dp).height(if (calm) 76.dp else 150.dp))
     }
 }
 @Composable private fun CelebrationHeader(celebration: Celebration, reduceMotion: Boolean, onEvent: (FuelUiEvent) -> Unit) {
-    var pose by remember(celebration.id) { mutableStateOf(celebrationPose(celebration, System.nanoTime() / 1_000_000L)) }
-    LaunchedEffect(celebration.id, reduceMotion) {
-        if (!reduceMotion) {
-            while (true) {
-                val next = celebrationPose(celebration, System.nanoTime() / 1_000_000L) ?: break
-                pose = next
-                delay(16)
-            }
-        }
-        onEvent(FuelUiEvent.CelebrationFinished(celebration.id))
-    }
-    if (reduceMotion || pose == null) return
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
         val message = when (celebration.variant) { Variant.Small -> "냠, 간식!"; Variant.Full -> "빵빵해요!"; Variant.Recovery -> "살았다…!"; else -> "든든하게 채웠어요" }
         Surface(Modifier.weight(1f).padding(bottom = 20.dp), shape = RoundedCornerShape(18.dp), color = Color(0xFFFFF4DF)) { Text(message, Modifier.padding(18.dp), color = Color(0xFF2E1E06), fontSize = 23.sp, fontWeight = FontWeight.Bold) }
-        Box(Modifier.width(190.dp).height(150.dp).clip(RoundedCornerShape(4.dp)).semantics { contentDescription = "주유를 마치고 인사하는 뽀동이" }, contentAlignment = Alignment.BottomEnd) {
-            val resource = when (pose) { Pose.Peek -> R.drawable.podong_peek; Pose.Wave -> R.drawable.podong_wave; Pose.Cheek -> R.drawable.podong_cheek; Pose.Wiggle -> R.drawable.podong_wiggle; Pose.Tuck -> R.drawable.podong_tuck; Pose.Sparkle, null -> null }
-            var wiggle by remember(celebration.id, pose) { mutableStateOf(false) }
-            LaunchedEffect(pose) { if (pose == Pose.Wiggle) repeat(4) { wiggle = !wiggle; delay(90) } }
-            val rotation by animateFloatAsState(if (pose == Pose.Wiggle) { if (wiggle) 5f else -5f } else 0f, label = "podongWiggle")
-            if (resource != null) Image(painterResource(resource), null, Modifier.width(190.dp).height(145.dp).graphicsLayer { rotationZ = rotation; translationX = if (pose == Pose.Peek) -28.dp.toPx() else 0f })
-            else Text("✦", color = GoldText, fontSize = 36.sp, modifier = Modifier.padding(30.dp))
+        PodongSprite(clipName(celebration.variant), Modifier.width(160.dp).height(160.dp), celebration.startedAtMs, celebrationDuration(celebration.variant)) {
+            onEvent(FuelUiEvent.CelebrationFinished(celebration.id))
         }
     }
 }
@@ -255,7 +235,7 @@ fun FuelPilotUi(
 @Composable private fun ScreenHeader(title: String, onEvent: (FuelUiEvent) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Image(painterResource(R.drawable.podong_wave), "안내하는 뽀동이", Modifier.width(48.dp).height(44.dp))
+            PodongSprite(modifier = Modifier.width(48.dp).height(44.dp))
             Text(title, color = White, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
         }
         TextButton(onClick = { onEvent(FuelUiEvent.Continue) }) { Text("지도 보기 ›", color = GoldText, fontSize = 19.sp) }

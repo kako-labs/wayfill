@@ -10,10 +10,11 @@
  function dispatch(action){state=reduce(state,action);persist();render();}
  function status(text){document.getElementById('event-status').textContent=text;}
  function character(){return FuelState.characterPolicy(state).mode==='playful';}
- function avatar(){return '<img class="podong-avatar" src="assets/podong-wave.png" alt="안내하는 뽀동이" data-podong="calm">';}
+ function sprite(clip='calm',cls='podong-avatar'){return `<canvas width="256" height="256" class="${cls}" data-animation="${clip}" role="img" aria-label="안내하는 뽀동이"></canvas>`;}
+ function avatar(){return sprite();}
  function identity(){return '<div class="message-identity">'+avatar()+'<span>뽀동이가 알려드려요</span></div>';}
  const actions=(id='A')=>`<div class="actions"><button class="primary" data-action="select" data-id="${id}">여기서 주유하기</button><button class="secondary" data-action="continue">계속 가기</button></div>`;
- const intro=(text)=>`<div class="intro ${character()?'':'intro-calm'}"><div class="bubble">${text}</div><img src="assets/podong-wave.png" alt="이유를 설명하는 뽀동이" data-podong="${character()?'friendly':'calm'}"></div>`;
+ const intro=(text)=>`<div class="intro ${character()?'':'intro-calm'}"><div class="bubble">${text}</div>${sprite(character()?'recommend':'calm','podong-large')}</div>`;
  function recommendation(){return `<div class="popup-group">${intro('목적지까지 가려면<br>중간에 주유해야 해요')}<section class="panel" aria-label="주유 추천"><div class="station-title"><span class="station-icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h12M4 10h10M14 8h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg></span><div><h2>주유소 A</h2><p class="station-detail"><strong>20km 앞</strong> · 경로에서 <strong>1분 추가</strong></p></div></div>${state.error?`<p class="error" role="alert">${esc(state.error)}</p>`:''}${actions()}<button class="text-action" data-action="analysis">주유가 필요한 이유 보기 ›</button></section></div>`;}
  function widget(){
   const c=FuelState.routeContext(state),done=!!state.refuel,added=state.routeStation,enough=state.routeStage==='longdrive';
@@ -27,20 +28,24 @@
  function completion(){
   const e=state.refuel||{},v=FuelState.variant(e),active=state.celebration&&character();
   const subtitle=e.liters!==null&&e.liters!==undefined?`오늘은 ${esc(e.liters)}L 먹었어요!`:'주유가 완료됐어요!';
-  const greeting=`<div class="intro completion-intro ${character()?'':'intro-calm'}"><div class="bubble">${messages[v]}<small>${subtitle}</small></div>${active?'<div class="motion-stage" data-pose="peek" aria-label="주유를 마치고 인사하는 뽀동이"><img class="podong-motion" data-pose="peek" src="assets/podong-peek.png" alt="뽀동이" data-podong="playful"><span class="sparkles">✦</span></div>':'<img src="assets/podong-wave.png" alt="주유를 마치고 곁에 있는 뽀동이" data-podong="settled">'}</div>`;
+  const greeting=`<div class="intro completion-intro ${character()?'':'intro-calm'}"><div class="bubble">${messages[v]}<small>${subtitle}</small></div>${sprite(active?(v==='normal'?'small':v):'calm','podong-large')}</div>`;
   return `<div class="popup-group completion-group">${greeting}<section class="panel completion"><div class="confirmation"><span class="check">✓</span>주유 완료</div><h2>연료를 채웠어요</h2>${e.rangeKm!==null&&e.rangeKm!==undefined?`<div class="range">${esc(e.rangeKm)}<small>km</small></div><p class="info">지금 연료로 갈 수 있는 예상 거리예요.</p>`:'<p class="info">차량에서 주행 가능 거리를 확인 중이에요.</p>'}<button class="primary" style="width:100%;margin-top:24px" data-action="drive">이제 출발하기</button><p class="info">${active?'정차 중에는 조금 더 신나게 인사해요.':'뽀동이가 출발 준비를 함께할게요.'}</p></section></div>`;
  }
  function longDrive(){return `<div class="popup-group long-drive">${intro('여행 준비 완료!')}<section class="panel"><div class="eyebrow">출발 전 확인</div><h2>이번 경로는 주유 없이<br>갈 수 있어요</h2><p class="station-detail">주행 가능 610km · 목적지까지 235km</p><p class="info">도착 후 약 375km를 더 갈 수 있어요.</p><button class="primary" style="width:100%;margin-top:24px" data-action="drive">출발하기</button></section></div>`;}
  function analysis(){const c=FuelState.routeContext(state),passingContext=state.routeStage==='passing',done=state.refuel!==null;return `<section class="full-screen"><header class="screen-head"><div class="screen-heading">${avatar()}<h2>${done?'주유 후 연료 확인':state.routeStage==='longdrive'?'경로 연료 확인':'주유가 필요한 이유'}</h2></div><button class="back" data-action="continue">지도로 돌아가기 ›</button></header>${done?`<div class="analysis-copy"><span class="eyebrow">주유 완료</span><h3>현재 연료로 갈 수 있는 거리를<br>다시 확인해 주세요.</h3><p class="summary">${state.refuel.rangeKm!==null?'차량에서 받은 주행 가능 거리: 약 '+state.refuel.rangeKm+'km':'차량의 최신 주행 가능 거리 수신을 기다려요.'}</p><p class="note">주유 전 경로 분석은 재사용하지 않아요. 실제 앱은 최신 차량 값과 남은 경로로 다시 판단해야 해요.</p></div>`:`${state.routeStage==='longdrive'?'<div class="analysis-copy"><span class="eyebrow">연료 여유가 있어요</span><h3>이번 경로는 주유 없이 갈 수 있을 것으로 예상돼요.</h3><p class="summary">주행 가능 약 610km · 목적지까지 235km</p><p class="note">도착 후 약 375km를 더 갈 수 있어요. 실제 주행 상황에 따라 달라져요.</p></div>':`<div class="analysis-grid"><section class="analysis-copy"><span class="eyebrow">중간 주유가 필요해요</span><h3>${passingContext?'B를 지나면 다음 주유소 C까지<br>연료가 부족할 수 있어요':'지금 연료로는<br>목적지까지 갈 수 없어요'}</h3><div class="numbers"><div><small>지금 연료로 갈 수 있는 거리</small><b>${c.rangeKm}<small>km</small></b></div><div><small>${passingContext?'다음 주유소 C까지':'목적지까지 거리'}</small><b>${passingContext?35:c.destinationKm}<small>km</small></b></div></div><p class="summary">${passingContext?'C까지 약 <b>17km 부족해요.</b><br>B는 3km 앞 우측에 있어요.':'목적지까지 <b>20km 부족해요.</b><br>도착 전에 한 번 주유해야 해요.'}</p><p class="note">차량의 주행 가능 거리와 경로 거리로 비교한 예상이에요.<br>실제 주행 상황과 주유소 진입 경로에 따라 달라져요.</p></section><section class="analysis-stations"><h3>${passingContext?'지나치기 전에 확인해 주세요':'어디서 주유하면 좋을까요?'}</h3>${passingContext?'':`<div class="station-row"><small>추천 · 더 가깝고 추가 시간이 짧아요</small><h4>주유소 A</h4><p>${c.stationKm}km 앞 · 경로에서 1분 추가</p><p class="station-value">A에 도착하면 약 55km를 더 갈 수 있어요.</p></div>`}<div class="station-row"><small>${passingContext?'이번에 들를 수 있는 주유소':'갈 수 있지만 A보다 멀어요'}</small><h4>주유소 B</h4><p>${passingContext?'3':state.routeStage==='early'?'50':'60'}km 앞 · 경로에서 3분 추가</p><p class="station-value">B에 도착하면 약 15km를 더 갈 수 있어요.</p></div><div class="station-row unreachable"><small>현재 연료로 도달하기 어려워요</small><h4>주유소 C</h4><p>${passingContext?'35':state.routeStage==='early'?'82':'92'}km 앞 · 경로에서 5분 추가</p><p class="station-value">C까지 약 17km 부족해요.</p></div><button class="primary" data-action="select" data-id="${passingContext?'B':'A'}">주유소 ${passingContext?'B':'A'}에서 주유하기</button></section></div>`}`}</section>`;}
  function settings(){return `<section class="full-screen"><header class="screen-head"><div class="screen-heading">${avatar()}<h2>주유 안내 설정</h2></div><button class="back" data-action="continue">지도로 돌아가기 ›</button></header><div class="settings"><label class="setting"><div><h3>정차 중 귀여운 움직임</h3><p>정차·주유 후에는 짧게 반응해요.<br>꺼도 뽀동이는 안내 메시지 곁에 계속 보여요.</p></div><input type="checkbox" id="character-toggle" ${state.characterEnabled?'checked':''}></label><div class="setting"><div><h3>주행 중에는 조용하게</h3><p>작은 모습으로 차분하게 함께해요.<br>출발하면 큰 동작을 멈추고 조용한 모습으로 바뀌어요.</p></div><span class="status">항상 적용</span></div><div class="setting"><div><h3>소리 없이 인사해요</h3><p>캐릭터 모션은 소리 없이 재생돼요.</p></div><span class="status">무음</span></div><p class="note">시연 설정은 이 브라우저 탭에만 저장돼요.</p></div></section>`;}
- function animate(){const c=state.celebration;if(!c||!character())return;const token=animationToken;
-  if(animationId!==c.id){animationId=c.id;animationStart=performance.now();}
-  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  function tick(now){if(token!==animationToken)return;const pose=reduced?null:poseAt(now-animationStart,c.variant);if(!pose){dispatch({type:'DONE',id:c.id});return;}
-   const img=surface.querySelector('.podong-motion'),holder=surface.querySelector('.motion-stage');if(!img||!holder)return;
-   if(img.dataset.pose!==pose){img.dataset.pose=pose;holder.dataset.pose=pose;if(pose!=='sparkle')img.src='assets/podong-'+pose+'.png';}
-   requestAnimationFrame(tick);
-  }requestAnimationFrame(tick);
+ let stopPlayers=[];
+ function animate(){
+  stopPlayers.forEach(stop=>stop());stopPlayers=[];
+  const c=state.celebration;
+  if(c&&animationId!==c.id){animationId=c.id;animationStart=performance.now();}
+  for(const canvas of surface.querySelectorAll('canvas[data-animation]')){
+   const clip=canvas.dataset.animation;
+   stopPlayers.push(PodongAnimation.mount(canvas,clip,{
+    reduced:!state.characterEnabled||matchMedia('(prefers-reduced-motion: reduce)').matches,
+    ...(c&&clip!=='calm'?{startedAt:animationStart,durationMs:durations[c.variant],onDone:()=>dispatch({type:'DONE',id:c.id})}:{})
+   }));
+  }
  }
  function render(){animationToken++;stage.dataset.screen=state.screen;
   document.getElementById('motion-label').textContent=state.motion==='parked'?'정차 중':state.motion==='moving'?'주행 중':'주행 상태 확인 중';

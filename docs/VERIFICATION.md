@@ -4,10 +4,10 @@
 
 | 검사 | 결과 |
 | --- | --- |
-| `npm test` | 13개 통과 |
-| `npm run verify` | 필수 파일, 동일한 웹/Android PNG 5종, 외부 웹 의존성 없음 확인 |
+| `npm test` | 17개 통과 |
+| `npm run verify` | 필수 파일, 동일한 웹/Android 아틀라스, 5클립/40프레임, 외부 웹 의존성 없음 확인 |
 | `node --check web/app.js` | 통과 |
-| `gradlew :fuel-pilot-ui:testDebugUnitTest` | JUnit 8개 통과, 실패/오류 0 |
+| `gradlew :fuel-pilot-ui:testDebugUnitTest` | JUnit 11개 통과, 실패/오류 0 |
 | `gradlew :fuel-pilot-ui:assembleDebug` | BUILD SUCCESSFUL, AAR 생성 |
 
 ## 브라우저 확인
@@ -39,10 +39,16 @@ Android는 모션 시작 시간을 상태에 기록하고 현재 단조 시계 �
 
 `release-artifacts/fuel-pilot-ui-debug.aar`
 
-SHA-256: `A9F2F292938E4AD4AF17A2BD2B905FE4E3E94155C574E5DAB5443B65D5D555B3`
+SHA-256: `90CDBAB1731C5C80AB2CC5C06EBDBA752F41A09AC5ADDCA7008F6A2537C5DB3A`
 
 원본 아티팩트 내보내기는 뽀동이 참고 보존용이다. 그 안의 이전 50km 여유 기준이나 오래된 문구가 이번 수정 문구/상태 계약을 대체하지 않는다.
 
 ## 메시지 동반 표시 수정
 
 사용자의 후속 요청에 따라 11개 상황 모두 메시지에 뽀동이를 한 개씩 표시한다. 주행 중 아바타의 CSS animation이 none임을 확인했다. 390px에서도 인사 종료 후 뽀동이가 남고 문서 가로 넘침이 없음을 확인했다.
+
+## 새로 생성한 40프레임 검증
+
+GPT 5개 동작 행 생성 → canonical component extraction → atlas → curated PNG → libwebp lossless WebP 인코딩. 파이프라인 inspect는 경고 없이 통과했다. contact sheet에서 투명도, 외형 일관성, 손과 몸 방향을 확인했다. 브라우저 실제 재생 중 각 클립의 0~7번 프레임을 모두 관찰했다. 390px에서 가로 넘침 없이 캐릭터가 표시됐다. 출발 즉시 큰 동작 취소 및 동일 이벤트 재전달 시 반복 없음 확인.
+
+리뷰에서 발견한 접근성 모션 줄이기 시 종료 누락을 수정했고, 실제 플레이어 단위 테스트를 추가했다. 일반 2초/소량 1초/가득·회복 2.4초 기한은 마지막 프레임 유지로 보존했다. Android 실제 기기 런타임은 여전히 미검증이다.

@@ -7,8 +7,11 @@ for(const pose of ['peek','wave','cheek','wiggle','tuck']){
  const native=fs.readFileSync(path.join(root,'android/fuel-pilot-ui/src/main/res/drawable-nodpi/podong_'+pose+'.png'));
  assert.deepEqual(web,native,'native asset mismatch: '+pose);
 }
-for(const name of ['index.html','style.css','app.js','state.js']){
+for(const name of ['index.html','style.css','app.js','state.js','animation-lab.html','animation-data.js','podong-animation.js']){
  const text=fs.readFileSync(path.join(root,'web',name),'utf8');
  assert.ok(!/https?:\/\//.test(text),'offline web dependency: '+name);
 }
-console.log('Package verified: required files, 5 matching native/web assets, no external web URLs.');
+assert.deepEqual(fs.readFileSync(path.join(root,'web/assets/animation/podong-atlas.png')),fs.readFileSync(path.join(root,'android/fuel-pilot-ui/src/main/res/drawable-nodpi/podong_atlas.png')));
+const data=require('../web/animation-data.js');
+for(const clip of Object.values(data.clips)){assert.equal(clip.frames.length,8);assert.equal(clip.durationMs,clip.durationsMs.reduce((a,b)=>a+b));assert.ok(fs.existsSync(path.join(root,'web',clip.file)));}
+console.log('Package verified: required files, matching native/web atlas, 5 clips / 40 frames, no external web URLs.');
