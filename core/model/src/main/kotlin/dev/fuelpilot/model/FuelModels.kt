@@ -6,6 +6,8 @@ enum class OpenStatus { OPEN, CLOSED, UNKNOWN }
 
 enum class RecommendationMode { LAST_SAFE_STOP, NEARBY }
 
+enum class SelectionBasis { LAST_SAFE_STOP, MINIMUM_DETOUR, NEAREST_REACHABLE }
+
 enum class UnavailableReason {
     STALE_ENERGY,
     ENERGY_UNAVAILABLE,
@@ -29,6 +31,7 @@ data class FuelStationCandidate(
     val distanceFromCurrentKm: Double,
     val distanceAlongRouteKm: Double? = null,
     val etaMinutes: Int? = null,
+    val detourMinutes: Int? = null,
     val openStatus: OpenStatus,
     val fuelCompatible: Boolean,
     val businessInfoFresh: Boolean,
@@ -63,6 +66,7 @@ sealed interface FuelDecision {
 
     data class Recommendation(
         val mode: RecommendationMode,
+        val basis: SelectionBasis,
         val primary: FuelStationCandidate,
         val alternatives: List<FuelStationCandidate>,
         val predictedArrivalRangeKm: Double? = null,

@@ -40,6 +40,7 @@ class FuelDecisionEngine {
 
         return FuelDecision.Recommendation(
             mode = RecommendationMode.LAST_SAFE_STOP,
+            basis = SelectionBasis.LAST_SAFE_STOP,
             primary = lastSafe,
             alternatives = safeStations.asReversed().drop(1).take(2),
             predictedArrivalRangeKm = predictedArrivalRangeKm,
@@ -64,6 +65,7 @@ class FuelDecisionEngine {
             ?: return FuelDecision.Unavailable(UnavailableReason.NO_REACHABLE_STATION)
         return FuelDecision.Recommendation(
             mode = RecommendationMode.NEARBY,
+            basis = SelectionBasis.NEAREST_REACHABLE,
             primary = primary,
             alternatives = candidates.drop(1).take(2),
             rangeAfterStopKm = input.rangeRemainingKm - primary.distanceFromCurrentKm,
