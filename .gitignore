@@ -7,3 +7,5 @@ local.properties
 *.aab
 captures/
 .superpowers/
+__pycache__/
+*.pyc
