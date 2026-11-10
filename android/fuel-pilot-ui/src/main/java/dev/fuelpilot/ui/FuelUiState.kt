@@ -30,6 +30,9 @@ fun refuelVariant(event: RefuelEvent): Variant = when {
     else -> Variant.Normal
 }
 enum class Pose { Peek, Wave, Cheek, Wiggle, Tuck, Sparkle }
+data class CharacterPresentation(val visible: Boolean, val playful: Boolean)
+/** Presence is permanent while a message is shown. Preference controls playful motion only. */
+fun characterPresentation(state: FuelUiState) = CharacterPresentation(true, state.motion == Motion.Parked && state.characterEnabled && !state.reduceMotion)
 fun poseSequence(variant: Variant): List<Pair<Pose, Long>> = when (variant) {
     Variant.Small -> listOf(Pose.Peek to 150L, Pose.Wave to 550L, Pose.Tuck to 300L)
     Variant.Full, Variant.Recovery -> listOf(Pose.Peek to 360L, Pose.Wave to 480L, Pose.Cheek to 480L, Pose.Wiggle to 600L, Pose.Tuck to 360L, Pose.Sparkle to 120L)

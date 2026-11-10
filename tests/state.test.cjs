@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {createState,reduce,variant,poseAt,routeContext}=require('../web/state.js');
+const {createState,reduce,variant,poseAt,routeContext,characterPolicy}=require('../web/state.js');
 const event=(id='fuel-1',more={})=>({type:'REFUEL',event:{id,liters:42,isFull:true,wasLow:false,rangeKm:610,...more}});
 test('parked confirmed refuel plays once; duplicate and delayed completion cannot replay or erase a newer event',()=>{
  let s=reduce(createState(),event());assert.equal(s.celebration.id,'fuel-1');
@@ -48,4 +48,11 @@ test('passing alert continue keeps B next, even when parked again',()=>{
  let s={...createState(),screen:'passing',motion:'moving',routeStage:'passing'};
  s=reduce(s,{type:'CONTINUE'});assert.equal(routeContext(s).stationId,'B');assert.equal(routeContext(s).stationKm,3);
  s=reduce(s,{type:'MOTION',motion:'parked'});assert.equal(routeContext(s).rangeKm,18);assert.equal(routeContext(s).destinationKm,38);
+});
+test('character stays with the message after celebration finishes, motion only becomes calm',()=>{
+ let s=reduce(createState(),event());s=reduce(s,{type:'DONE',id:'fuel-1'});assert.equal(characterPolicy(s).visible,true);
+ s=reduce(s,{type:'MOTION',motion:'moving'});assert.equal(characterPolicy(s).visible,true);assert.equal(characterPolicy(s).mode,'calm');
+});
+test('unknown motion and animation disabled still retain a calm character',()=>{
+ for(const s of [{...createState(),motion:'unknown'},{...createState(),characterEnabled:false}]){assert.equal(characterPolicy(s).visible,true);assert.equal(characterPolicy(s).mode,'calm');}
 });

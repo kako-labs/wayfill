@@ -33,5 +33,6 @@
   if(s.routeStage==='refuel')return {stationId:null,stationKm:null,rangeKm:s.refuel?.rangeKm,destinationKm:35};
   return {stationId:'A',stationKm:20,rangeKm:75,destinationKm:95};
  };
- const api={createState,reduce,variant,poseAt,durations,routeContext};if(typeof module!=='undefined')module.exports=api;root.FuelState=api;
+ const characterPolicy=s=>({visible:true,mode:s.motion==='parked'&&s.characterEnabled?'playful':'calm'});
+ const api={createState,reduce,variant,poseAt,durations,routeContext,characterPolicy};if(typeof module!=='undefined')module.exports=api;root.FuelState=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

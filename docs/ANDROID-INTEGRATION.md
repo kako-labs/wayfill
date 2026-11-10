@@ -66,6 +66,7 @@ dispatch(FuelUiEvent.MotionChanged(Motion.Moving))
 ```
 
 - 모든 reducer 갱신을 동일한 UI dispatcher/직렬 경로에서 처리하세요.
+- 메시지가 보이는 동안 캐릭터 표시는 항상 유지합니다. `characterEnabled`는 기존 이름을 유지한 호환 필드로, 이제 정차 중 귀여운 동작만 제어합니다. false여도 작은 정적인 캐릭터는 계속 보입니다.
 - `seenIds`, `characterEnabled`, `reduceMotion`을 호스트 저장 계층에서 보존하고 **이벤트 구독 전에** 복원하세요. 이벤트 ID는 재전달 때도 같아야 합니다. `System.currentTimeMillis()`를 수신 때마다 새로 만들면 중복 방지가 무력화됩니다.
 - 복원 시 `celebration = null`로 시작해 이전 인사를 재생하지 마세요. 처음 수신할 때부터 이미 처리됐던 과거 이벤트인지 호스트가 구분해야 합니다.
 - 같은 프로세스의 화면 재생성에서는 `Celebration.startedAtMs`를 그대로 보존하세요. `System.nanoTime()` 기반의 시작 시간에서 현재 포즈를 계산해 남은 구간만 재생하며, 기한이 지났으면 재생하지 않습니다. 프로세스/기기 재시작 뒤에는 이 타임스탬프를 재사용하지 않고 위 규칙대로 celebration을 비웁니다.

@@ -65,7 +65,7 @@ fun FuelPilotUi(
     mapContent: @Composable BoxScope.() -> Unit = {},
 ) {
     val parked = state.motion == Motion.Parked
-    val showCharacter = parked && state.characterEnabled
+    val playfulCharacter = characterPresentation(state).playful
     val station = route.recommended
     val select: (FuelStation) -> Unit = {
         if (state.pendingStation == null) {
@@ -79,7 +79,7 @@ fun FuelPilotUi(
             // Detailed screens are suppressed if speed/parking state is moving or unknown.
             val screen = if (!parked && state.screen in listOf(Screen.Settings, Screen.LongDrive)) Screen.Widget else state.screen
             if (screen == Screen.Analysis) {
-                Analysis(state, route, showCharacter, maxWidth < 840.dp, select, onEvent)
+                Analysis(state, route, maxWidth < 840.dp, select, onEvent)
             } else if (screen == Screen.Settings) {
                 Settings(state, onEvent)
             } else {
@@ -92,8 +92,8 @@ fun FuelPilotUi(
                     when (screen) {
                         Screen.Recommendation -> {
                             val reason = if (shortfall(route.rangeKm, route.destinationKm) != null) "목적지까지 가려면\n중간에 주유해야 해요" else "현재 경로의 주유 정보를\n확인해 주세요"
-                            if (showCharacter) PodongIntro(reason) else Copy(reason, 24)
-                            Panel {
+                            PodongIntro(reason, calm = !playfulCharacter)
+                            Panel(showIdentity = false) {
                                 StationCopy(station)
                                 state.error?.let { Text(it, color = Coral, fontSize = 17.sp) }
                                 Actions(station, select, onEvent)
@@ -116,8 +116,10 @@ fun FuelPilotUi(
                             Primary("지도 보기", enabled = screen == Screen.Added) { onEvent(FuelUiEvent.Continue) }
                         }
                         Screen.Refuel -> {
-                            state.celebration?.takeIf { showCharacter }?.let { CelebrationHeader(it, state.reduceMotion, onEvent) }
-                            Panel {
+                            val active = state.celebration?.takeIf { playfulCharacter }
+                            if (active != null && celebrationPose(active, System.nanoTime() / 1_000_000L) != null) CelebrationHeader(active, state.reduceMotion, onEvent)
+                            else PodongIntro(when (state.refuel?.let(::refuelVariant)) { Variant.Small -> "냠, 간식!"; Variant.Full -> "빵빵해요!"; Variant.Recovery -> "살았다…!"; else -> "든든하게 채웠어요" }, calm = !playfulCharacter)
+                            Panel(showIdentity = false) {
                                 Text("✓ 주유 완료", color = GoldText, fontSize = 19.sp)
                                 Copy("연료를 채웠어요", 32)
                                 val range = valid(state.refuel?.rangeKm)
@@ -128,8 +130,8 @@ fun FuelPilotUi(
                             }
                         }
                         Screen.LongDrive -> {
-                            if (showCharacter) PodongIntro("여행 준비 완료!")
-                            Panel {
+                            PodongIntro("여행 준비 완료!", calm = !playfulCharacter)
+                            Panel(showIdentity = false) {
                                 val enough = valid(route.rangeKm)?.let { r -> valid(route.destinationKm)?.let { d -> r >= d } } == true
                                 Copy(if (enough) "이번 경로는 주유 없이\n갈 수 있을 것으로 예상돼요" else "출발 전 연료와 경로를\n확인해 주세요", 28)
                                 Text("주행 가능 ${km(route.rangeKm)} · 목적지 ${km(route.destinationKm)}", color = Muted, fontSize = 20.sp)
@@ -150,9 +152,12 @@ fun FuelPilotUi(
     }
 }
 
-@Composable private fun Panel(content: @Composable ColumnScope.() -> Unit) {
+@Composable private fun Panel(showIdentity: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
     Surface(color = Graphite, shape = RoundedCornerShape(24.dp)) {
-        Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(18.dp), content = content)
+        Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            if (showIdentity) MessageIdentity()
+            content()
+        }
     }
 }
 @Composable private fun Copy(text: String, size: Int) { Text(text, color = White, fontSize = size.sp, lineHeight = (size * 1.4).sp, fontWeight = FontWeight.Bold) }
@@ -169,10 +174,16 @@ fun FuelPilotUi(
         Button(onClick = { onEvent(FuelUiEvent.Continue) }, modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2620), contentColor = White)) { Text("계속 가기", fontSize = 21.sp) }
     }
 }
-@Composable private fun PodongIntro(text: String) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 145.dp), verticalAlignment = Alignment.Bottom) {
+@Composable private fun MessageIdentity() {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Image(painterResource(R.drawable.podong_wave), "차분하게 안내하는 뽀동이", Modifier.width(64.dp).height(52.dp))
+        Text("뽀동이가 알려드려요", color = Muted, fontSize = 16.sp)
+    }
+}
+@Composable private fun PodongIntro(text: String, calm: Boolean = false) {
+    Row(Modifier.fillMaxWidth().heightIn(min = if (calm) 100.dp else 145.dp), verticalAlignment = Alignment.Bottom) {
         Surface(Modifier.weight(1f).padding(bottom = 20.dp), color = Color(0xFFFFF4DF), shape = RoundedCornerShape(20.dp)) { Text(text, Modifier.padding(18.dp), color = Color(0xFF2E1E06), fontSize = 23.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold) }
-        Image(painterResource(R.drawable.podong_wave), contentDescription = "뽀동이", modifier = Modifier.width(150.dp).height(130.dp))
+        Image(painterResource(R.drawable.podong_wave), contentDescription = if (calm) "차분한 뽀동이" else "곁에 있는 뽀동이", modifier = Modifier.width(if (calm) 80.dp else 150.dp).height(if (calm) 76.dp else 130.dp))
     }
 }
 @Composable private fun CelebrationHeader(celebration: Celebration, reduceMotion: Boolean, onEvent: (FuelUiEvent) -> Unit) {
@@ -201,7 +212,7 @@ fun FuelPilotUi(
         }
     }
 }
-@Composable private fun Analysis(state: FuelUiState, route: FuelRouteUi, showCharacter: Boolean, narrow: Boolean, select: (FuelStation) -> Unit, onEvent: (FuelUiEvent) -> Unit) {
+@Composable private fun Analysis(state: FuelUiState, route: FuelRouteUi, narrow: Boolean, select: (FuelStation) -> Unit, onEvent: (FuelUiEvent) -> Unit) {
     Column(Modifier.fillMaxSize().background(Color(0xFF100F0D)).verticalScroll(rememberScrollState())) {
         ScreenHeader(if (state.refuel != null) "주유 후 연료 확인" else "주유가 필요한 이유", onEvent)
         if (state.refuel != null) {
@@ -221,7 +232,7 @@ fun FuelPilotUi(
                     Text("${if (next != null && state.motion != Motion.Parked) "다음 주유소까지" else "목적지까지"}\n${km(target)}", color = White, fontSize = 24.sp)
                     shortage?.let { Text("약 ${number(it)}km 부족해요.", color = Coral, fontSize = 24.sp) }
                     Text("차량의 주행 가능 거리와 경로 거리로 비교한 예상이에요. 실제 주행 상황에 따라 달라져요.", color = Muted, fontSize = 18.sp)
-                    if (showCharacter) route.recommendationReason?.let { PodongIntro(it) }
+                    route.recommendationReason?.let { Text(it, color = GoldText, fontSize = 20.sp, lineHeight = 29.sp) }
                 }
             }
             val stations: @Composable () -> Unit = {
@@ -242,17 +253,23 @@ fun FuelPilotUi(
     }
 }
 @Composable private fun ScreenHeader(title: String, onEvent: (FuelUiEvent) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) { Copy(title, 25); TextButton(onClick = { onEvent(FuelUiEvent.Continue) }) { Text("지도 보기 ›", color = GoldText, fontSize = 19.sp) } }
+    Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Image(painterResource(R.drawable.podong_wave), "안내하는 뽀동이", Modifier.width(48.dp).height(44.dp))
+            Text(title, color = White, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        }
+        TextButton(onClick = { onEvent(FuelUiEvent.Continue) }) { Text("지도 보기 ›", color = GoldText, fontSize = 19.sp) }
+    }
     HorizontalDivider(color = Line)
 }
 @Composable private fun Settings(state: FuelUiState, onEvent: (FuelUiEvent) -> Unit) {
     Column(Modifier.fillMaxSize().background(Graphite).verticalScroll(rememberScrollState())) {
         ScreenHeader("주유 안내 설정", onEvent)
         Row(Modifier.fillMaxWidth().padding(32.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) { Copy("뽀동이 인사", 25); Text("주유 완료 후 정차 중에만 짧게 인사해요.\n꺼도 주유 안내와 완료 확인은 유지돼요.", color = Muted, fontSize = 20.sp) }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) { Copy("정차 중 귀여운 움직임", 25); Text("정차·주유 후에는 짧게 반응해요.\n꺼도 뽀동이는 메시지 곁에 계속 보여요.", color = Muted, fontSize = 20.sp) }
             Switch(checked = state.characterEnabled, onCheckedChange = { onEvent(FuelUiEvent.CharacterChanged(it)) })
         }
         HorizontalDivider(color = Line)
-        Text("주행 중에는 큰 캐릭터를 표시하지 않아요.\n캐릭터는 소리 없이 한 번만 인사해요.", Modifier.padding(32.dp), color = Muted, fontSize = 21.sp, lineHeight = 32.sp)
+        Text("주행 중에는 작은 뽀동이가 차분하게 함께해요.\n주유 후 인사가 끝나도 메시지가 보이는 동안 곁에 남아요.", Modifier.padding(32.dp), color = Muted, fontSize = 21.sp, lineHeight = 32.sp)
     }
 }

@@ -45,4 +45,12 @@ class FuelUiStateTest {
         assertEquals(first.celebration, duplicate.celebration)
         assertNull(celebrationPose(duplicate.celebration!!, nowMs = 3400))
     }
+    @Test fun characterRemainsAfterTheDanceAndWhileMoving() {
+        val initial = reduceFuelUi(parked(), FuelUiEvent.RefuelConfirmed(fuel))
+        val done = reduceFuelUi(initial, FuelUiEvent.CelebrationFinished(fuel.id))
+        assertTrue(characterPresentation(done).visible)
+        val moving = reduceFuelUi(done, FuelUiEvent.MotionChanged(Motion.Moving))
+        assertTrue(characterPresentation(moving).visible); assertFalse(characterPresentation(moving).playful)
+        assertTrue(characterPresentation(FuelUiState(characterEnabled = false)).visible)
+    }
 }
