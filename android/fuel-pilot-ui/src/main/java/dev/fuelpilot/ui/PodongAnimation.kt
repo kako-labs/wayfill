@@ -13,7 +13,7 @@ import kotlinx.coroutines.delay
 
 internal val LocalPodongStill = staticCompositionLocalOf { false }
 internal fun clipName(v: Variant) = when(v) { Variant.Normal,Variant.Small -> "small";Variant.Full -> "full";Variant.Recovery -> "recovery" }
-internal fun celebrationDuration(v: Variant): Long = when(v) { Variant.Normal -> 2000L;Variant.Small -> 1000L;else -> 2400L }
+internal fun celebrationDuration(v: Variant): Long = when(v) { Variant.Normal -> 2000L;Variant.Small -> 1600L;else -> 2400L }
 internal fun spriteFrame(name: String, elapsedMs: Long, calmLoop: Boolean = false): Int {
     val clip = PodongClips.clips.getValue(name)
     val time = elapsedMs.coerceAtLeast(0).let { if(calmLoop) it % 6000L else it }
@@ -46,6 +46,7 @@ internal fun spriteFrame(name: String, elapsedMs: Long, calmLoop: Boolean = fals
     Canvas(modifier.semantics { contentDescription = "안내하는 뽀동이" }) {
         val r = clip.frames[frame]
         val side = size.minDimension.toInt()
-        drawImage(atlas,IntOffset(r.x,r.y),IntSize(r.w,r.h),IntOffset((size.width.toInt()-side)/2,(size.height.toInt()-side)/2),IntSize(side,side))
+        val v = clip.viewport
+        drawImage(atlas,IntOffset(r.x+v.x,r.y+v.y),IntSize(v.w,v.h),IntOffset((size.width.toInt()-side)/2,(size.height.toInt()-side)/2),IntSize(side,side))
     }
 }

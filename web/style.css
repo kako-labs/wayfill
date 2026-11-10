@@ -27,3 +27,17 @@ body{word-break:keep-all;overflow-wrap:break-word}[hidden]{display:none!importan
  .intro.intro-calm>.bubble{font-size:18px}.intro.intro-calm>img{width:72px;height:64px}
  .message-identity{font-size:14px}.message-identity .podong-avatar{width:54px;height:44px}
 }
+
+/* Parked acting gets enough space for the broad arm arcs; driving avatar stays small. */
+.intro:has(>.podong-large){height:210px}
+.intro>.podong-large{width:210px;height:210px}
+.intro.intro-calm:has(>.podong-large){height:106px}
+.intro.intro-calm>.podong-large{width:88px;height:88px}
+@media(max-width:720px){
+ .car-screen{height:810px}
+ .intro:has(>.podong-large){height:152px}
+ .intro>.podong-large{width:140px;height:140px}
+ .intro.intro-calm:has(>.podong-large){height:106px}
+ .intro.intro-calm>.podong-large{width:72px;height:72px}
+ .completion-intro>.bubble{font-size:18px}
+}

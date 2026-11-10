@@ -13,5 +13,5 @@ for(const name of ['index.html','style.css','app.js','state.js','animation-lab.h
 }
 assert.deepEqual(fs.readFileSync(path.join(root,'web/assets/animation/podong-atlas.png')),fs.readFileSync(path.join(root,'android/fuel-pilot-ui/src/main/res/drawable-nodpi/podong_atlas.png')));
 const data=require('../web/animation-data.js');
-for(const clip of Object.values(data.clips)){assert.equal(clip.frames.length,8);assert.equal(clip.durationMs,clip.durationsMs.reduce((a,b)=>a+b));assert.ok(fs.existsSync(path.join(root,'web',clip.file)));}
-console.log('Package verified: required files, matching native/web atlas, 5 clips / 40 frames, no external web URLs.');
+for(const [name,clip] of Object.entries(data.clips)){assert.equal(clip.frames.length,name==='calm'?8:16);assert.equal(clip.durationMs,clip.durationsMs.reduce((a,b)=>a+b));assert.ok(fs.existsSync(path.join(root,'web',clip.file)));assert.ok(clip.viewport.w>0&&clip.viewport.x+clip.viewport.w<=256);}
+console.log('Package verified: matching native/web atlas, 5 clips / 72 frames, fixed per-clip viewports, no external web URLs.');

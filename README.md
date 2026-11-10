@@ -4,7 +4,7 @@
 
 **내일 회사 PC에서는 [START-HERE.md](START-HERE.md)부터 읽으세요.**
 
-- `web/animation-lab.html`: 새로 그린 5동작·40프레임 애니메이션 비교
+- `web/animation-lab.html`: 새로 그린 5동작·72프레임 애니메이션 비교
 - `web/index.html`: 설치 없이 더블클릭하는 오프라인 인터랙티브 데모, 11개 상황
 - `android/fuel-pilot-ui`: 상태 reducer와 원본 캐릭터 리소스를 포함한 Compose 라이브러리
 - `release-artifacts/fuel-pilot-ui-debug.aar`: 빌드된 Android UI 라이브러리

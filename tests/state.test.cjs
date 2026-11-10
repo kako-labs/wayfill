@@ -35,7 +35,7 @@ test('invalid event IDs are ignored; duplicate suppression survives serializatio
  assert.equal(reduce(restored,event()).celebration,null);
 });
 test('motion ends rather than looping, small variant is shorter',()=>{
- assert.equal(poseAt(0,'normal'),'peek');assert.equal(poseAt(800,'normal'),'cheek');assert.equal(poseAt(2100,'normal'),null);assert.equal(poseAt(1100,'small'),null);
+ assert.equal(poseAt(0,'normal'),'peek');assert.equal(poseAt(800,'normal'),'cheek');assert.equal(poseAt(2100,'normal'),null);assert.equal(poseAt(1600,'small'),null);
 });
 test('departing the long-drive greeting switches to the quiet widget',()=>{
  const s=reduce({...createState(),screen:'longdrive'},{type:'MOTION',motion:'moving'});assert.equal(s.screen,'widget');

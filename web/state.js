@@ -2,7 +2,7 @@
  'use strict';
  const createState=()=>({screen:'recommendation',motion:'parked',routeStage:'start',celebration:null,refuel:null,seenIds:[],characterEnabled:true,pendingStation:null,routeStation:null,error:null});
  function variant(e){if(e.isFull&&e.wasLow)return 'recovery';if(e.isFull)return 'full';if(Number.isFinite(e.liters)&&e.liters>0&&e.liters<=10)return 'small';return 'normal';}
- const durations={normal:2000,small:1000,full:2400,recovery:2400};
+ const durations={normal:2000,small:1600,full:2400,recovery:2400};
  function poseAt(ms,v='normal'){
   const d=durations[v]||2000;if(ms<0||ms>=d)return null;
   if(v==='small')return ms<150?'peek':ms<700?'wave':'tuck';

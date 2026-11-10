@@ -180,14 +180,14 @@ fun FuelPilotUi(
 @Composable private fun PodongIntro(text: String, calm: Boolean = false, clip: String = "recommend") {
     Row(Modifier.fillMaxWidth().heightIn(min = if (calm) 100.dp else 145.dp), verticalAlignment = Alignment.Bottom) {
         Surface(Modifier.weight(1f).padding(bottom = 20.dp), color = Color(0xFFFFF4DF), shape = RoundedCornerShape(20.dp)) { Text(text, Modifier.padding(18.dp), color = Color(0xFF2E1E06), fontSize = 23.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold) }
-        PodongSprite(if (calm) "calm" else clip, Modifier.width(if (calm) 80.dp else 150.dp).height(if (calm) 76.dp else 150.dp))
+        PodongSprite(if (calm) "calm" else clip, Modifier.width(if (calm) 80.dp else 190.dp).height(if (calm) 76.dp else 190.dp))
     }
 }
 @Composable private fun CelebrationHeader(celebration: Celebration, reduceMotion: Boolean, onEvent: (FuelUiEvent) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
         val message = when (celebration.variant) { Variant.Small -> "냠, 간식!"; Variant.Full -> "빵빵해요!"; Variant.Recovery -> "살았다…!"; else -> "든든하게 채웠어요" }
         Surface(Modifier.weight(1f).padding(bottom = 20.dp), shape = RoundedCornerShape(18.dp), color = Color(0xFFFFF4DF)) { Text(message, Modifier.padding(18.dp), color = Color(0xFF2E1E06), fontSize = 23.sp, fontWeight = FontWeight.Bold) }
-        PodongSprite(clipName(celebration.variant), Modifier.width(160.dp).height(160.dp), celebration.startedAtMs, celebrationDuration(celebration.variant)) {
+        PodongSprite(clipName(celebration.variant), Modifier.width(190.dp).height(190.dp), celebration.startedAtMs, celebrationDuration(celebration.variant)) {
             onEvent(FuelUiEvent.CelebrationFinished(celebration.id))
         }
     }

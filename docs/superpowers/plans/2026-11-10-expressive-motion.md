@@ -1,0 +1,5 @@
+# Expressive motion revision
+
+User feedback: 8-frame animations feel awkward and too restrained. Keep the accepted mascot identity and calm driving mode. Revise parked acting with a single readable action, strong facial changes and arm arcs, anticipation and follow-through. Use 16 genuinely sequential drawings per active clip (experimental generation until motion QA), retaining 8 calm frames. Use foot-centroid registration to reduce side-to-side shifts caused by extended arms; consistent torso scale. Avoid rapid rear/front switches. Full refuel is a squash/stretch cheer; recovery is a broad relieved stretch. Increase parked character display space while preserving message readability.
+
+Generate on D with the already authorized Codex provider; do not change billing/provider. Canonical extraction, atlas and curated output only. Inspect contact sheets and actual player playback before replacing the kit. Generalize frame-count assumptions, test final boundaries and event deadlines, build native library, update docs/ZIP/branch. Do not claim continuous vector animation or actual Pleos device validation.

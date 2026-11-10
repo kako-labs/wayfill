@@ -6,7 +6,7 @@
   const c=data.clips[name]||data.clips.calm;
   let time=Math.max(0,elapsed);if(calmLoop)time%=6000;
   let end=0;for(let i=0;i<c.frames.length;i++){end+=c.durationsMs[i];if(time<end)return {clip:name,index:i,done:false};}
-  return {clip:name,index:7,done:!calmLoop};
+  return {clip:name,index:c.frames.length-1,done:!calmLoop};
  }
  let atlas;
  function mount(canvas,name='calm',options={}){
@@ -15,8 +15,8 @@
   const reduced=options.reduced??matchMedia('(prefers-reduced-motion: reduce)').matches;
   function tick(now){
    if(stopped||!canvas.isConnected)return;
-   const s=sample(name,now-start,name==='calm',reduced),r=data.clips[s.clip].frames[s.index];
-   if(atlas.complete&&atlas.naturalWidth){ctx.clearRect(0,0,256,256);ctx.drawImage(atlas,r.x,r.y,r.w,r.h,0,0,256,256);canvas.dataset.frame=String(s.index);canvas.dataset.clip=s.clip;}
+   const s=sample(name,now-start,name==='calm',reduced),clip=data.clips[s.clip],r=clip.frames[s.index],v=clip.viewport??{x:0,y:0,w:r.w,h:r.h};
+   if(atlas.complete&&atlas.naturalWidth){ctx.clearRect(0,0,256,256);ctx.drawImage(atlas,r.x+v.x,r.y+v.y,v.w,v.h,0,0,256,256);canvas.dataset.frame=String(s.index);canvas.dataset.clip=s.clip;}
    if(s.done&&now-start>=(options.durationMs??data.clips[name].durationMs)){options.onDone?.();return;}
    if(reduced&&atlas.complete&&atlas.naturalWidth){options.onDone?.();return;}
    handle=requestAnimationFrame(tick);
