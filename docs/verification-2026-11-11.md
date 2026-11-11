@@ -31,4 +31,17 @@ Android 35 Pixel_8 에뮬레이터에서 debug APK 설치와 Activity 실행 성
 
 ## 최종 검증
 
-전체 Android `verifyAll`, 웹 검증, 독립 리뷰의 최종 결과는 같은 브랜치의 후속 기록에서 확정한다.
+`python scripts/dev.py doctor`: JDK 17/Android SDK 준비 확인. `python scripts/dev.py verify`: `verifyAll` 성공, 1분 7초 / 291개 Gradle 작업. APK 생성 및 모든 모듈 lint 포함. Kotlin 테스트 집계는 77개(앱 8 / 도메인 14 / 데이터 포트 9 / assist 46), 웹 17개, Python 모듈 정책 2개이며 모두 실패 0건이다. `npm.cmd run verify`도 웹/네이티브 아틀라스·72프레임·외부 웹 의존성 없음 검사를 통과했다.
+
+독립 리뷰의 두 Important 지적을 회귀 테스트 3개로 RED→GREEN 확인했다.
+
+1. 저장이 지연돼도 출발/Unknown 및 진행 중 내비 취소는 즉시 처리한다. 단일 intent actor와 순서가 보장된 저장 writer를 분리했고, 저장 성공한 추천/주유 ID만 적극 노출한다. 과거 저장 응답이 현재 주행 상태를 덮어쓰지 않는다.
+2. 차량 이벤트 스트림 오류는 Unknown/Unavailable로 전환한다. 잘못된 Parked 스냅샷으로 동작을 계속하지 않으며 앱 재실행 전까지 안내를 중단한다. 실제 SDK 어댑터의 재연결 전략은 후속 작업이다.
+
+리뷰 Minor 한 건은 후속 UI 작업으로 남겼다: 앱 호스트에서 정차 전용 Settings 진입 버튼이 아직 없다. 설정 화면/영속 선호/intent 계약은 보존되어 있다.
+
+리뷰가 판단을 보류한 실제 Pleos SDK 취소/권한과 차량 실행은 SDK/차량 환경이 없으므로 미검증으로 유지한다. 에뮬레이터 결과로 이를 통과했다고 대체하지 않는다.
+
+앱 아이콘 누락은 승인된 calm 정지 이미지 원본을 런처에 그대로 연결해 해결했다. 웹/네이티브 모션 리소스와 타이밍에는 변경이 없다.
+
+[에뮬레이터 1024×768 화면](../reference/android-unsupported-1024x768.png).

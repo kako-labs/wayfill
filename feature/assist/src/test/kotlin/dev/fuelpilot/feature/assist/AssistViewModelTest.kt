@@ -14,6 +14,44 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AssistViewModelTest {
+    @Test fun departureDoesNotWaitForItsOwnOrAnEarlierDurableWrite() = runTest {
+        for (blockedEarlier in listOf(false, true)) {
+            val gate = CompletableDeferred<Unit>()
+            var block = false
+            val store = object : AssistStateStore {
+                override suspend fun read() = AssistStoredState()
+                override suspend fun write(state: AssistStoredState) { if (block) gate.await() }
+            }
+            val vm = AssistViewModel(store, scope = backgroundScope)
+            readyRecommendation(vm)
+            vm.dispatch(AssistIntent.SelectStation("station")); runCurrent()
+            block = true
+            if (blockedEarlier) { vm.dispatch(AssistIntent.CharacterChanged(false)); runCurrent() }
+            vm.dispatch(AssistIntent.MotionChanged(Motion.Moving)); runCurrent()
+            assertEquals(Motion.Moving, vm.state.value.ui.motion)
+            assertEquals(Screen.Widget, vm.state.value.ui.screen)
+            assertNull(vm.state.value.pending)
+            gate.complete(Unit); runCurrent()
+            assertEquals(Screen.Widget, vm.state.value.ui.screen)
+        }
+    }
+
+    @Test fun departureDuringRefuelPersistenceNeverPublishesLateCelebration() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val vm = AssistViewModel(object : AssistStateStore {
+            override suspend fun read() = AssistStoredState()
+            override suspend fun write(state: AssistStoredState) { gate.await() }
+        }, scope = backgroundScope)
+        runCurrent(); vm.dispatch(AssistIntent.MotionChanged(Motion.Parked)); runCurrent()
+        vm.dispatch(AssistIntent.RefuelConfirmed(RefuelEvent("receipt"))); runCurrent()
+        assertNull(vm.state.value.ui.celebration)
+        vm.dispatch(AssistIntent.MotionChanged(Motion.Unknown)); runCurrent()
+        assertEquals(Motion.Unknown, vm.state.value.ui.motion)
+        gate.complete(Unit); runCurrent()
+        assertNull(vm.state.value.ui.celebration)
+        assertEquals(Screen.Widget, vm.state.value.ui.screen)
+    }
+
     @Test fun unreadableStoreDoesNotStartLiveEventsOrPretendRestoreSucceeded() = runTest {
         var collected = false
         val vm = AssistViewModel(object : AssistStateStore {

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dev.fuelpilot.ui.FuelUiState
 import dev.fuelpilot.ui.FuelRouteUi
 import dev.fuelpilot.ui.Screen
+import dev.fuelpilot.ui.Motion
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
@@ -26,7 +27,12 @@ class AssistViewModel(
     private val monotonicClockMs: () -> Long = { System.nanoTime() / 1_000_000L },
     private val requestId: () -> String = { UUID.randomUUID().toString() },
 ) : ViewModel() {
-    private val intents = Channel<AssistIntent>(Channel.UNLIMITED)
+    private sealed interface Message {
+        data class Input(val intent: AssistIntent) : Message
+        data class Saved(val value: AssistStoredState) : Message
+        data object StorageFailed : Message
+    }
+    private val messages = Channel<Message>(Channel.UNLIMITED)
     private val outgoing = Channel<AssistEffect>(Channel.UNLIMITED)
     private val mutableState = MutableStateFlow(AssistViewState())
     val state = mutableState.asStateFlow()
@@ -48,7 +54,7 @@ class AssistViewModel(
                     mutableState.value = storageUnavailable(mutableState.value)
                     return@launch
                 }
-            mutableState.value = AssistViewState(
+            var logical = AssistViewState(
                 ready = true,
                 persisted = restored,
                 ui = FuelUiState(
@@ -58,32 +64,83 @@ class AssistViewModel(
                     statusMessage = "차량과 경로 정보를 확인 중이에요.",
                 ),
             )
-            // Subscription itself is behind restoration, not merely the event handlers.
-            val liveCollection = launch { liveIntents.collect { intents.send(it) } }
-            for (intent in intents) {
-                val previous = mutableState.value
-                val transition = reduceAssist(
-                    previous, intent, wallClockMs(), monotonicClockMs(),
-                    if (intent is AssistIntent.SelectStation) requestId() else "",
-                )
-                // Durable deduplication/exposure must succeed before publishing a celebration.
-                try {
-                    if (transition.state.persisted != previous.persisted) store.write(transition.state.persisted)
-                } catch (cancelled: CancellationException) { throw cancelled
-                } catch (_: Exception) {
-                    // Fail closed: no unrecorded celebration or request is published.
-                    mutableState.value = storageUnavailable(previous)
-                    liveCollection.cancel()
-                    break
+            var durable = restored
+            mutableState.value = logical
+            // One ordered writer acknowledges snapshots; the intent actor never waits on disk.
+            val writes = Channel<AssistStoredState>(Channel.UNLIMITED)
+            val writer = launch {
+                for (snapshot in writes) {
+                    try {
+                        store.write(snapshot)
+                        messages.send(Message.Saved(snapshot))
+                    } catch (cancelled: CancellationException) { throw cancelled
+                    } catch (_: Exception) {
+                        messages.send(Message.StorageFailed)
+                        break
+                    }
                 }
-                mutableState.value = transition.state
-                transition.effects.forEach { outgoing.send(it) }
+            }
+            // Subscription itself is behind restoration, not merely the event handlers.
+            val liveCollection = launch { liveIntents.collect { messages.send(Message.Input(it)) } }
+            var deferredEffect: AssistEffect.AddWaypoint? = null
+            try {
+                for (message in messages) {
+                    when (message) {
+                        is Message.Input -> {
+                            val intent = message.intent
+                            val transition = reduceAssist(
+                                logical, intent, wallClockMs(), monotonicClockMs(),
+                                if (intent is AssistIntent.SelectStation) requestId() else "",
+                            )
+                            if (transition.state.persisted != logical.persisted) writes.send(transition.state.persisted)
+                            logical = transition.state
+                            transition.effects.forEach { effect ->
+                                when (effect) { is AssistEffect.AddWaypoint -> deferredEffect = effect }
+                            }
+                        }
+                        is Message.Saved -> durable = message.value
+                        Message.StorageFailed -> {
+                            mutableState.value = storageUnavailable(logical.copy(persisted = durable))
+                            break
+                        }
+                    }
+                    // Safety transitions are immediate. Positive exposure waits for its own durable ID.
+                    mutableState.value = visibleState(logical, durable)
+                    deferredEffect?.let { effect ->
+                        val pending = logical.pending
+                        if (pending?.requestId != effect.requestId || pending.stationId != effect.stationId) {
+                            deferredEffect = null
+                        } else if (mutableState.value.pending == pending) {
+                            outgoing.send(effect)
+                            deferredEffect = null
+                        }
+                    }
+                }
+            } finally {
+                liveCollection.cancel()
+                writes.close()
+                writer.cancel()
             }
         }
     }
 
     fun dispatch(intent: AssistIntent) {
-        check(intents.trySend(intent).isSuccess) { "Assist intent channel is closed" }
+        check(messages.trySend(Message.Input(intent)).isSuccess) { "Assist intent channel is closed" }
+    }
+
+    private fun visibleState(logical: AssistViewState, durable: AssistStoredState): AssistViewState {
+        val refuelUnsaved = logical.ui.refuel?.id?.let { it !in durable.processedRefuels } == true
+        val exposureUnsaved = logical.activeRecommendationKey?.let { it !in durable.exposedRecommendationKeys } == true &&
+            logical.ui.screen in setOf(Screen.Recommendation, Screen.Passing, Screen.Adding)
+        if (logical.ui.motion == Motion.Parked && (refuelUnsaved || exposureUnsaved)) {
+            return logical.copy(
+                pending = null, persisted = durable,
+                presentation = AssistPresentation(FuelRouteUi(), Screen.Widget, null, AssistAvailability.UNAVAILABLE),
+                ui = logical.ui.copy(screen = Screen.Widget, refuel = null, celebration = null,
+                    pendingStation = null, detailsAvailable = false, statusMessage = "안내 기록을 저장 중이에요."),
+            )
+        }
+        return logical.copy(persisted = durable)
     }
 
     private fun storageUnavailable(previous: AssistViewState) = previous.copy(

@@ -15,6 +15,22 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppDependenciesTest {
+    @Test fun failedVehicleStreamInvalidatesParkedStateWithoutCrashingTheOwner() = runTest {
+        val failure = CompletableDeferred<Unit>()
+        val vm = start(fixture(vehicle = object : VehicleEvents {
+            override val motion = flow {
+                emit(Motion.Parked); failure.await(); throw SecurityException("revoked")
+            }
+            override val refuels = emptyFlow<RefuelEvent>()
+        })); runCurrent()
+        assertEquals(Screen.Recommendation, vm.state.value.ui.screen)
+        failure.complete(Unit); runCurrent()
+        assertEquals(Motion.Unknown, vm.state.value.ui.motion)
+        assertEquals(AssistAvailability.UNAVAILABLE, vm.state.value.presentation.availability)
+        assertNull(vm.state.value.pending)
+        assertNull(vm.state.value.presentation.route.recommended)
+    }
+
     @Test fun defaultsUseUnsupportedPortsAndNeverInventRouteOrNumbers() = runTest {
         val d = AppDependencies(MemoryStore())
         assertSame(UnsupportedEnergyRepository, d.energy)
@@ -103,12 +119,13 @@ class AppDependenciesTest {
         energy: EnergyRepository = object : EnergyRepository { override suspend fun readEnergy() = EnergyResult.Available(75.0) },
         stations: StationRepository = object : StationRepository { override suspend fun findStations() = StationResult.Available(listOf(candidate)) },
         navigation: NavigationRepository = routePort(),
+        vehicle: VehicleEvents = object : VehicleEvents {
+            override val motion = flowOf(Motion.Parked)
+            override val refuels = emptyFlow<RefuelEvent>()
+        },
     ) = AppDependencies(MemoryStore(), energy, object : LocationRepository {
         override suspend fun readLocation() = LocationResult.Available(VehicleLocation(37.0,127.0))
-    }, stations, navigation, object : VehicleEvents {
-        override val motion = flowOf(Motion.Parked)
-        override val refuels = emptyFlow<RefuelEvent>()
-    }, refreshIntervalMs = 5000L, navigationTimeoutMs = 1000L)
+    }, stations, navigation, vehicle, refreshIntervalMs = 5000L, navigationTimeoutMs = 1000L)
 
     private fun routePort(route: ActiveRoute? = ActiveRoute("route", "destination", 95.0),
         result: suspend (WaypointRequest) -> WaypointResult = { WaypointResult.Unsupported(it.requestId,it.stationId) },

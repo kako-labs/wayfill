@@ -25,7 +25,12 @@ class AppCoordinator(private val dependencies: AppDependencies) {
         dependencies.vehicleEvents.motion.map { AssistIntent.MotionChanged(it) },
         dependencies.vehicleEvents.refuels.map { AssistIntent.RefuelConfirmed(it) },
         dependencies.reduceMotion.map { AssistIntent.ReduceMotionChanged(it) },
-    )
+    ).catch { failure ->
+        if (failure is CancellationException) throw failure
+        // A failed vehicle subscription cannot leave a last Parked snapshot actionable.
+        emit(AssistIntent.MotionChanged(dev.fuelpilot.ui.Motion.Unknown))
+        emit(AssistIntent.PresentationChanged(unavailable(AssistAvailability.UNAVAILABLE)))
+    }
 
     suspend fun readIntents(): List<AssistIntent> = coroutineScope {
         val e = async { readOr<EnergyResult>(EnergyResult.Unavailable) { dependencies.energy.readEnergy() } }
