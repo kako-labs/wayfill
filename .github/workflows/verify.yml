@@ -1,0 +1,113 @@
+name: Product verification
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Android35 build tools
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Make wrapper executable
+        run: chmod +x gradlew
+      - name: Python delivery and architecture tests
+        run: python -m unittest discover -s scripts/tests -v
+      - name: Gateway server tests
+        run: python -m unittest discover -s server/tests -v
+      - name: Web tests
+        run: npm test
+      - name: Web package policy
+        run: npm run verify
+      - name: Doctor
+        run: python scripts/dev.py doctor
+      - name: Build, lint, unit tests and architecture policy
+        run: python scripts/dev.py verify
+      - name: Release APK
+        run: ./gradlew :app:assembleRelease --no-daemon --max-workers=1 --console=plain
+      - name: Verify release demo isolation
+        run: python scripts/check_demo_isolation.py --apk app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Portable source package
+        run: python scripts/export_source.py dist/fuel-pilot-source.zip
+      - name: Upload build reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-reports
+          path: |
+            **/build/reports/
+            **/build/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload APKs and source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-builds-and-source
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+            dist/fuel-pilot-source.zip
+          if-no-files-found: warn
+          retention-days: 14
+
+  compose-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Enable KVM for managed emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Install Android35 build tools
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Run Android35 Compose instrumentation
+        run: |
+          chmod +x gradlew
+          python scripts/ui_tests.py
+      - name: Upload instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android35-compose-reports
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+            app/build/outputs/managed_device_android_test_additional_output/
+            app/build/outputs/apk/androidTest/
+          if-no-files-found: warn
+          retention-days: 14
+
