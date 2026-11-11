@@ -37,3 +37,7 @@ python scripts/dev.py verify
 ```
 
 실제 Pleos SDK와 지도 표면 권한, 차량 기기에서의 성능/동작 검증은 아직 남아 있다. 이 앱은 SDK가 없는 일반 Android 에뮬레이터에서 주유 안내 미지원 상태를 표시하는 것이 정상이다.
+
+## 독립 리뷰 후 추가 수정
+
+느린 저장이 출발 취소를 지연시키지 않도록 intent actor와 저장 writer를 분리했다. 저장 전 새 주유 인사를 발행하지 않는 원칙은 유지한다. 차량 이벤트 구독이 예외로 끝나면 Unknown/Unavailable로 비활성화한다. Settings 진입 버튼 추가는 후속 UI 작업으로 기록했다.

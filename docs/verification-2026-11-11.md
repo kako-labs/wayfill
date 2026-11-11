@@ -25,6 +25,8 @@ Android 35 Pixel_8 에뮬레이터에서 debug APK 설치와 Activity 실행 성
 
 에뮬레이터 확인은 실제 Pleos 차량·권한·SDK 또는 내비 지도 위 표시 검증을 의미하지 않는다.
 
+최종 APK 재설치 후 동일 UI를 다시 확인했다. 해당 실행에서 `am start -W`의 대기는 timeout이었지만 이후 UI hierarchy와 스크린샷으로 정상 표시를 확인했고 AndroidRuntime 오류는 없었다. 이 소프트웨어 GPU 에뮬레이터 실행 시간으로 실차 시작 성능을 판단하지 않는다.
+
 ## 실제 SDK 연결 계약
 
 다음 연결 지점은 `AppDependencies`: energy, location, stations, navigation, vehicleEvents다. 정차 상태와 안정적인 주유 이벤트 ID를 공급하는 SDK 구현을 주입해야 한다. route.id는 목적지/활성 경로 생명주기 변경을 구분해야 하며, 거리 갱신마다 새 ID를 발급하면 같은 추천이 반복된다. 각 어댑터는 Fresh/Stale/Unavailable/Unsupported를 정직하게 반환한다. coroutine 취소 시 실제 SDK 작업/콜백 해제도 어댑터가 처리해야 한다.

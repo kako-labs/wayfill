@@ -362,39 +362,39 @@ Run: `git add app README.md docs && git commit -m "feat: connect approved assist
 - Consumes: all prior task commits
 - Produces: reviewed, verified, and remotely preserved integration branch
 
-- [ ] **Step 1: Run repository policy and environment checks**
+- [x] **Step 1: Run repository policy and environment checks**
 
 Run: `python scripts/dev.py doctor` and `python -m unittest discover -s scripts/tests -v`
 
 Expected: doctor reports JDK 17/Android SDK ready; Python policy tests pass.
 
-- [ ] **Step 2: Run full Android verification with an isolated Gradle home if the shared cache is broken**
+- [x] **Step 2: Run full Android verification with an isolated Gradle home if the shared cache is broken**
 
 Run: `python scripts/dev.py verify`
 
 If and only if the known cache move error recurs, rerun the same Gradle `verifyAll --no-daemon --max-workers=1` target with a repository-local temporary Gradle user home and record both results. Do not report success if plugin download or cache errors still prevent completion.
 
-- [ ] **Step 3: Run web verification**
+- [x] **Step 3: Run web verification**
 
 Run: `npm.cmd test && npm.cmd run verify`
 
 Expected: 17 tests pass and package verification succeeds against the migrated native resources.
 
-- [ ] **Step 4: Check Git and artifact hygiene**
+- [x] **Step 4: Check Git and artifact hygiene**
 
 Run: `git status --short`, `git diff --check`, and search tracked files for `local.properties`, machine-specific paths, caches, debug AARs, and demo constants in Android source.
 
 Expected: clean tree; no machine files/caches/AARs; no demo runtime values.
 
-- [ ] **Step 5: Launch a fresh Orca reviewer in this worktree**
+- [x] **Step 5: Launch a fresh Orca reviewer in this worktree**
 
 Ask it to inspect the whole branch against both specs, the plan, and the base commit without editing. Resolve only evidence-backed findings and rerun affected tests.
 
-- [ ] **Step 6: Record verification evidence and commit it**
+- [x] **Step 6: Record verification evidence and commit it**
 
 Run: `git add docs/SESSION-PROGRESS.md && git commit -m "docs: record approved UI integration verification"`
 
-- [ ] **Step 7: Push and verify the live remote hash**
+- [x] **Step 7: Push and verify the live remote hash**
 
 Run: `git push -u origin integrate/podong-approved`, then `git ls-remote --heads origin refs/heads/integrate/podong-approved`.
 
