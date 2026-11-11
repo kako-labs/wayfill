@@ -19,6 +19,14 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PreferencesAssistStateStoreTest {
+    @Test fun reservePolicyRestoresAndObservationTracksDurableChanges() = runTest {
+        val store = store("reserve")
+        assertEquals(50, store.read().minimumReserveKm)
+        store.write(store.read().copy(minimumReserveKm = 80))
+        assertEquals(80, store.read().minimumReserveKm)
+        assertEquals(80, store.observeMinimumReserveKm().first())
+    }
+
     private val fileSystem = FakeFileSystem()
     private val now = 100L * 24 * 60 * 60 * 1000
 

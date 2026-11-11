@@ -5,6 +5,10 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** Use a single Preferences DataStore per file, owned by the host application. */
 class PreferencesAssistStateStore(
@@ -22,6 +26,9 @@ class PreferencesAssistStateStore(
         dataStore.updateData { current -> encode(state.pruned(wallClockMs()), current) }
     }
 
+    override fun observeMinimumReserveKm(): Flow<Int> = dataStore.data
+        .map { (it[RESERVE] ?: 50).takeIf(::validReserveKm) ?: 50 }.distinctUntilChanged()
+
     private fun decode(preferences: Preferences) = AssistStoredState(
         processedRefuels = preferences[REFUELS].orEmpty().mapNotNull { entry ->
             // Only the first ':' is a separator; event IDs may contain arbitrary text.
@@ -36,6 +43,7 @@ class PreferencesAssistStateStore(
         destinationId = preferences[DESTINATION],
         lastRecommendationKey = preferences[LAST_RECOMMENDATION],
         exposedRecommendationKeys = preferences[EXPOSED].orEmpty(),
+        minimumReserveKm = (preferences[RESERVE] ?: 50).takeIf(::validReserveKm) ?: 50,
     )
 
     private fun encode(state: AssistStoredState, current: Preferences): Preferences =
@@ -45,6 +53,7 @@ class PreferencesAssistStateStore(
             this[CHARACTER] = state.characterEnabled
             this[REDUCE_MOTION] = state.reduceMotion
             this[EXPOSED] = state.exposedRecommendationKeys.sorted().toSet()
+            this[RESERVE] = state.minimumReserveKm
             if (state.routeId == null) remove(ROUTE) else this[ROUTE] = state.routeId
             if (state.destinationId == null) remove(DESTINATION) else this[DESTINATION] = state.destinationId
             if (state.lastRecommendationKey == null) remove(LAST_RECOMMENDATION)
@@ -59,5 +68,6 @@ class PreferencesAssistStateStore(
         val DESTINATION = stringPreferencesKey("assist.destination_id")
         val LAST_RECOMMENDATION = stringPreferencesKey("assist.last_recommendation")
         val EXPOSED = stringSetPreferencesKey("assist.exposed_recommendations")
+        val RESERVE = intPreferencesKey("assist.minimum_reserve_km")
     }
 }

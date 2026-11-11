@@ -14,6 +14,29 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AssistViewModelTest {
+    @Test fun reserveAndMotionPreferencesAreParkedOnlyAndReserveUsesTenKmSteps() = runTest {
+        val vm = model(); runCurrent()
+        vm.dispatch(AssistIntent.ReserveChanged(70)); vm.dispatch(AssistIntent.CharacterChanged(false)); runCurrent()
+        assertEquals(50, vm.state.value.persisted.minimumReserveKm)
+        assertTrue(vm.state.value.persisted.characterEnabled)
+        vm.dispatch(AssistIntent.MotionChanged(Motion.Parked)); runCurrent()
+        for (invalid in listOf(0,19,25,101,110)) vm.dispatch(AssistIntent.ReserveChanged(invalid))
+        runCurrent(); assertEquals(50, vm.state.value.persisted.minimumReserveKm)
+        vm.dispatch(AssistIntent.ReserveChanged(70)); runCurrent()
+        assertEquals(70, vm.state.value.persisted.minimumReserveKm)
+        vm.dispatch(AssistIntent.MotionChanged(Motion.Moving)); vm.dispatch(AssistIntent.ReserveChanged(20)); runCurrent()
+        assertEquals(70, vm.state.value.persisted.minimumReserveKm)
+    }
+
+    @Test fun changedReserveInvalidatesOldRecommendationAndPendingRequest() = runTest {
+        val vm = model(); readyRecommendation(vm)
+        vm.dispatch(AssistIntent.SelectStation("station")); runCurrent()
+        vm.dispatch(AssistIntent.ReserveChanged(60)); runCurrent()
+        assertNull(vm.state.value.pending)
+        assertTrue(vm.state.value.persisted.exposedRecommendationKeys.isEmpty())
+        assertNull(vm.state.value.presentation.route.recommended)
+    }
+
     @Test fun departureDoesNotWaitForItsOwnOrAnEarlierDurableWrite() = runTest {
         for (blockedEarlier in listOf(false, true)) {
             val gate = CompletableDeferred<Unit>()

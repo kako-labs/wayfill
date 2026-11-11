@@ -20,6 +20,7 @@ sealed interface AssistIntent {
     data class Show(val screen: Screen) : AssistIntent
     data class CelebrationFinished(val id: String) : AssistIntent
     data class CharacterChanged(val enabled: Boolean) : AssistIntent
+    data class ReserveChanged(val km: Int) : AssistIntent
     data class ReduceMotionChanged(val enabled: Boolean) : AssistIntent
     data object Continue : AssistIntent
 }
@@ -124,7 +125,13 @@ fun reduceAssist(
         is AssistIntent.CelebrationFinished -> next = state.copy(
             ui = reduceFuelUi(state.ui, FuelUiEvent.CelebrationFinished(intent.id), monotonicClockMs),
         )
-        is AssistIntent.CharacterChanged -> next = state.copy(
+        is AssistIntent.ReserveChanged -> if (state.ui.motion == Motion.Parked && validReserveKm(intent.km) && intent.km != state.persisted.minimumReserveKm) {
+            next = state.clearTransient().copy(
+                persisted = state.persisted.clearExposure().copy(minimumReserveKm = intent.km),
+                presentation = unavailablePresentation(), requestedScreen = state.requestedScreen,
+            )
+        }
+        is AssistIntent.CharacterChanged -> if (state.ui.motion == Motion.Parked) next = state.copy(
             persisted = state.persisted.copy(characterEnabled = intent.enabled),
             ui = reduceFuelUi(state.ui, FuelUiEvent.CharacterChanged(intent.enabled), monotonicClockMs),
         )

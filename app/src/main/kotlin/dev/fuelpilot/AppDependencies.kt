@@ -33,6 +33,7 @@ class AppDependencies(
     val navigationTimeoutMs: Long = 10_000L,
     val reduceMotion: Flow<Boolean> = emptyFlow(),
     val readTimeoutMs: Long = 5000L,
+    val refreshRequests: Flow<Unit> = emptyFlow(),
 ) {
     init { require(refreshIntervalMs > 0 && navigationTimeoutMs > 0 && readTimeoutMs > 0) }
     fun coordinator() = AppCoordinator(this)

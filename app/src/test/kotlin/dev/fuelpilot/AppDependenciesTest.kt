@@ -15,6 +15,18 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppDependenciesTest {
+    @Test fun coordinatorUsesTheStoredReserveInsteadOfHardCodedFifty() = runTest {
+        val store = object : AssistStateStore {
+            override suspend fun read() = AssistStoredState(minimumReserveKm = 70)
+            override suspend fun write(state: AssistStoredState) = Unit
+        }
+        val base = fixture()
+        val deps = AppDependencies(store, base.energy, base.location, base.stations, base.navigation, base.vehicleEvents)
+        val result = deps.coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertNull(result.route.recommended)
+        assertEquals(AssistAvailability.UNAVAILABLE, result.availability)
+    }
+
     @Test fun failedVehicleStreamInvalidatesParkedStateWithoutCrashingTheOwner() = runTest {
         val failure = CompletableDeferred<Unit>()
         val vm = start(fixture(vehicle = object : VehicleEvents {

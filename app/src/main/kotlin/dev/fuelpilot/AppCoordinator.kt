@@ -11,17 +11,16 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
 /** App-level orchestration. No SDK calls or test fixtures are hidden in this class. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class AppCoordinator(private val dependencies: AppDependencies) {
     private val engine = FuelDecisionEngine()
     private val mapper = FuelDecisionUiMapper()
 
     fun liveIntents(): Flow<AssistIntent> = merge(
-        flow {
-            while (currentCoroutineContext().isActive) {
-                readIntents().forEach { emit(it) }
-                delay(dependencies.refreshIntervalMs)
-            }
-        },
+        combine(merge(flow {
+            while (currentCoroutineContext().isActive) { emit(Unit); delay(dependencies.refreshIntervalMs) }
+        }, dependencies.refreshRequests), dependencies.store.observeMinimumReserveKm()) { _, reserve -> reserve }
+            .transformLatest { reserve -> readIntents(reserve).forEach { emit(it) } },
         dependencies.vehicleEvents.motion.map { AssistIntent.MotionChanged(it) },
         dependencies.vehicleEvents.refuels.map { AssistIntent.RefuelConfirmed(it) },
         dependencies.reduceMotion.map { AssistIntent.ReduceMotionChanged(it) },
@@ -32,7 +31,8 @@ class AppCoordinator(private val dependencies: AppDependencies) {
         emit(AssistIntent.PresentationChanged(unavailable(AssistAvailability.UNAVAILABLE)))
     }
 
-    suspend fun readIntents(): List<AssistIntent> = coroutineScope {
+    suspend fun readIntents(minimumReserveKm: Int? = null): List<AssistIntent> = coroutineScope {
+        val reserve = (minimumReserveKm ?: dependencies.store.read().minimumReserveKm).takeIf(::validReserveKm) ?: 50
         val e = async { readOr<EnergyResult>(EnergyResult.Unavailable) { dependencies.energy.readEnergy() } }
         val l = async { readOr<LocationResult>(LocationResult.Unavailable) { dependencies.location.readLocation() } }
         val r = async { readOr<RouteResult>(RouteResult.Unavailable) { dependencies.navigation.readRoute() } }
@@ -64,7 +64,7 @@ class AppCoordinator(private val dependencies: AppDependencies) {
                 candidates.any { !it.distanceFromCurrentKm.validDistance() || it.distanceAlongRouteKm?.validDistance() == false }
             ) unavailable(AssistAvailability.UNAVAILABLE)
             else {
-                val input = FuelDecisionInput(rangeRemainingKm = range, route = activeRoute, stations = candidates)
+                val input = FuelDecisionInput(rangeRemainingKm = range, minimumReserveKm = reserve.toDouble(), route = activeRoute, stations = candidates)
                 mapper.map(AssistPresentationInput(engine.evaluate(input), input, activeRoute?.id))
             }
         }

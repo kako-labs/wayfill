@@ -58,7 +58,7 @@ fun FuelPilotUi(
     mapContent: @Composable BoxScope.() -> Unit = {},
 ) {
     if (state.overlayVisible) {
-        FuelPilotUi(state.ui, state.presentation.route, onIntent, modifier, mapContent)
+        FuelPilotUi(state.ui, state.presentation.route, onIntent, state.persisted.minimumReserveKm, modifier, mapContent)
     } else {
         Box(modifier.fillMaxSize(), content = mapContent)
     }
@@ -69,6 +69,7 @@ private fun FuelPilotUi(
     state: FuelUiState,
     route: FuelRouteUi,
     onIntent: (AssistIntent) -> Unit,
+    minimumReserveKm: Int,
     modifier: Modifier = Modifier,
     mapContent: @Composable BoxScope.() -> Unit = {},
 ) {
@@ -90,7 +91,7 @@ private fun FuelPilotUi(
             if (screen == Screen.Analysis) {
                 Analysis(state, route, maxWidth < 840.dp, select, onEvent)
             } else if (screen == Screen.Settings) {
-                Settings(state, onEvent)
+                Settings(state, onEvent, minimumReserveKm, true)
             } else {
                 Column(
                     Modifier.align(Alignment.BottomStart).padding(24.dp)
@@ -248,24 +249,44 @@ private fun FuelPilotUi(
         }
     }
 }
-@Composable private fun ScreenHeader(title: String, onEvent: (AssistIntent) -> Unit) {
+@Composable private fun ScreenHeader(title: String, onEvent: (AssistIntent) -> Unit, backLabel: String = "지도 보기 ›") {
     Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PodongSprite(modifier = Modifier.width(48.dp).height(44.dp))
             Text(title, color = White, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
         }
-        TextButton(onClick = { onEvent(AssistIntent.Continue) }) { Text("지도 보기 ›", color = GoldText, fontSize = 19.sp) }
+        TextButton(onClick = { onEvent(AssistIntent.Continue) }) { Text(backLabel, color = GoldText, fontSize = 19.sp) }
     }
     HorizontalDivider(color = Line)
 }
-@Composable private fun Settings(state: FuelUiState, onEvent: (AssistIntent) -> Unit) {
+@Composable private fun Settings(state: FuelUiState, onEvent: (AssistIntent) -> Unit, reserve: Int, editable: Boolean) {
     Column(Modifier.fillMaxSize().background(Graphite).verticalScroll(rememberScrollState())) {
-        ScreenHeader("주유 안내 설정", onEvent)
+        ScreenHeader("주유 안내 설정", onEvent, "홈으로 ›")
+        Column(Modifier.padding(horizontal = 32.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Copy("주유 판단 여유거리", 25)
+            Text("${reserve}km", color = GoldText, fontSize = 40.sp, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Button(onClick = { onEvent(AssistIntent.ReserveChanged(reserve - 10)) }, enabled = editable && reserve > 20, modifier = Modifier.heightIn(min = 76.dp)) { Text("−10km", fontSize = 24.sp) }
+                Button(onClick = { onEvent(AssistIntent.ReserveChanged(reserve + 10)) }, enabled = editable && reserve < 100, modifier = Modifier.heightIn(min = 76.dp)) { Text("+10km", fontSize = 24.sp) }
+            }
+            Text("20~100km 중에서 정해요. 주유 시점을 판단하는 추정 거리 기준이며 안전을 보장하는 수치는 아니에요.", color = Muted, fontSize = 20.sp)
+            if (!editable) Text("차량의 정차 상태를 확인한 뒤 변경할 수 있어요.", color = Coral, fontSize = 20.sp)
+        }
         Row(Modifier.fillMaxWidth().padding(32.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) { Copy("정차 중 귀여운 움직임", 25); Text("정차·주유 후에는 짧게 반응해요.\n꺼도 뽀동이는 메시지 곁에 계속 보여요.", color = Muted, fontSize = 20.sp) }
-            Switch(checked = state.characterEnabled, onCheckedChange = { onEvent(AssistIntent.CharacterChanged(it)) })
+            Switch(checked = state.characterEnabled, enabled = editable, onCheckedChange = { onEvent(AssistIntent.CharacterChanged(it)) })
         }
         HorizontalDivider(color = Line)
         Text("주행 중에는 작은 뽀동이가 차분하게 함께해요.\n주유 후 인사가 끝나도 메시지가 보이는 동안 곁에 남아요.", Modifier.padding(32.dp), color = Muted, fontSize = 21.sp, lineHeight = 32.sp)
     }
+}
+
+@Composable fun FuelPilotSettings(state: AssistViewState, onIntent: (AssistIntent) -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxSize()) {
+        Settings(state.ui, { if (it == AssistIntent.Continue) onBack() else onIntent(it) }, state.persisted.minimumReserveKm, state.ready && state.ui.motion == Motion.Parked)
+    }
+}
+
+@Composable fun PodongBadge(modifier: Modifier = Modifier, still: Boolean = false) {
+    CompositionLocalProvider(LocalPodongStill provides still) { PodongSprite(modifier) }
 }

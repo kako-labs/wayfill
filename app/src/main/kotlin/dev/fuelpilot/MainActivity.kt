@@ -22,7 +22,7 @@ class MainActivity : ComponentActivity() {
             val state by host.assist.state.collectAsState()
             MaterialTheme {
                 Surface(Modifier.fillMaxSize(), color = Color(0xFF0C0B09)) {
-                    FuelPilotUi(state = state, onIntent = host.assist::dispatch, modifier = Modifier.fillMaxSize())
+                    AppShell(state = state, onIntent = host.assist::dispatch, modifier = Modifier.fillMaxSize())
                 }
             }
         }

@@ -1,5 +1,10 @@
 package dev.fuelpilot.feature.assist
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+
+fun validReserveKm(value: Int) = value in 20..100 && value % 10 == 0
+
 /** Durable values only: animations and monotonic clock values never cross this boundary. */
 data class AssistStoredState(
     val processedRefuels: Map<String, Long> = emptyMap(),
@@ -9,6 +14,7 @@ data class AssistStoredState(
     val destinationId: String? = null,
     val lastRecommendationKey: String? = null,
     val exposedRecommendationKeys: Set<String> = emptySet(),
+    val minimumReserveKm: Int = 50,
 ) {
     fun pruned(nowMs: Long): AssistStoredState = copy(
         processedRefuels = processedRefuels.entries
@@ -17,6 +23,7 @@ data class AssistStoredState(
             .take(256)
             .associate { it.key to it.value },
         exposedRecommendationKeys = exposedRecommendationKeys + listOfNotNull(lastRecommendationKey),
+        minimumReserveKm = minimumReserveKm.takeIf(::validReserveKm) ?: 50,
     )
 }
 
@@ -26,4 +33,5 @@ private const val REFUEL_RETENTION_MS = 90L * 24 * 60 * 60 * 1000
 interface AssistStateStore {
     suspend fun read(): AssistStoredState
     suspend fun write(state: AssistStoredState)
+    fun observeMinimumReserveKm(): Flow<Int> = flow { emit(read().minimumReserveKm) }
 }
