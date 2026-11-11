@@ -14,6 +14,37 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AssistViewModelTest {
+    @Test fun lateEvaluationForTheOldReserveCannotRestoreAnInvalidatedRecommendation() = runTest {
+        val vm = model(); readyRecommendation(vm)
+        vm.dispatch(AssistIntent.ReserveChanged(70)); runCurrent()
+        vm.dispatch(AssistIntent.PresentationChanged(recommendation(), minimumReserveKm = 50)); runCurrent()
+        assertNull(vm.state.value.presentation.route.recommended)
+        vm.dispatch(AssistIntent.SelectStation("station")); runCurrent()
+        assertNull(vm.state.value.pending)
+    }
+
+    @Test fun reusedRecommendationKeyCannotBypassPendingReservePersistence() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        var blocked = false
+        var saved = AssistStoredState()
+        val store = object : AssistStateStore {
+            override suspend fun read() = saved
+            override suspend fun write(state: AssistStoredState) {
+                if (blocked) gate.await()
+                saved = state
+            }
+        }
+        val vm = AssistViewModel(store, scope = backgroundScope)
+        readyRecommendation(vm)
+        blocked = true
+        vm.dispatch(AssistIntent.ReserveChanged(70))
+        vm.dispatch(AssistIntent.PresentationChanged(recommendation(), minimumReserveKm = 70)); runCurrent()
+        assertEquals(AssistAvailability.UNAVAILABLE, vm.state.value.presentation.availability)
+        gate.complete(Unit); runCurrent()
+        assertEquals(70, vm.state.value.persisted.minimumReserveKm)
+        assertEquals(AssistAvailability.READY, vm.state.value.presentation.availability)
+    }
+
     @Test fun reserveAndMotionPreferencesAreParkedOnlyAndReserveUsesTenKmSteps() = runTest {
         val vm = model(); runCurrent()
         vm.dispatch(AssistIntent.ReserveChanged(70)); vm.dispatch(AssistIntent.CharacterChanged(false)); runCurrent()

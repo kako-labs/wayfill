@@ -12,9 +12,17 @@ sealed interface RouteResult {
     data object Unsupported : RouteResult
 }
 
+enum class NavigationMode { ADD_WAYPOINT, SET_DESTINATION }
+data class NavigationCapabilities(
+    val supportsDestination: Boolean = false, val supportsWaypoint: Boolean = false,
+    val maxWaypoints: Int? = null, val currentWaypoints: Int? = null, val activeRouteId: String? = null,
+)
+
 data class WaypointRequest(
     val requestId: String,
     val stationId: String,
+    val mode: NavigationMode = NavigationMode.ADD_WAYPOINT,
+    val expectedRouteId: String? = null,
 )
 
 sealed interface WaypointResult {
@@ -45,12 +53,15 @@ sealed interface WaypointResult {
         override val requestId: String,
         override val stationId: String,
     ) : WaypointResult
+    data class CapacityReached(override val requestId: String, override val stationId: String) : WaypointResult
 }
 
 interface NavigationRepository {
     suspend fun readRoute(): RouteResult
 
     suspend fun addWaypoint(request: WaypointRequest): WaypointResult
+    suspend fun setDestination(request: WaypointRequest): WaypointResult = WaypointResult.Unsupported(request.requestId, request.stationId)
+    suspend fun capabilities(): NavigationCapabilities = NavigationCapabilities()
 }
 
 object UnsupportedNavigationRepository : NavigationRepository {

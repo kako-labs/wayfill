@@ -2,6 +2,7 @@ package dev.fuelpilot.feature.assist
 
 import dev.fuelpilot.data.navigation.WaypointRequest
 import dev.fuelpilot.data.navigation.WaypointResult
+import dev.fuelpilot.data.navigation.NavigationMode
 import dev.fuelpilot.ui.FuelRouteUi
 import dev.fuelpilot.ui.FuelUiEvent
 import dev.fuelpilot.ui.FuelUiState
@@ -11,7 +12,7 @@ import dev.fuelpilot.ui.Screen
 import dev.fuelpilot.ui.reduceFuelUi
 
 sealed interface AssistIntent {
-    data class PresentationChanged(val value: AssistPresentation) : AssistIntent
+    data class PresentationChanged(val value: AssistPresentation, val minimumReserveKm: Int? = null) : AssistIntent
     data class RouteChanged(val routeId: String?, val destinationId: String?) : AssistIntent
     data class MotionChanged(val value: Motion) : AssistIntent
     data class RefuelConfirmed(val value: RefuelEvent) : AssistIntent
@@ -21,12 +22,13 @@ sealed interface AssistIntent {
     data class CelebrationFinished(val id: String) : AssistIntent
     data class CharacterChanged(val enabled: Boolean) : AssistIntent
     data class ReserveChanged(val km: Int) : AssistIntent
+    data object PauseMonitoring : AssistIntent
     data class ReduceMotionChanged(val enabled: Boolean) : AssistIntent
     data object Continue : AssistIntent
 }
 
 sealed interface AssistEffect {
-    data class AddWaypoint(val requestId: String, val stationId: String) : AssistEffect
+    data class AddWaypoint(val requestId: String, val stationId: String, val mode: NavigationMode = NavigationMode.ADD_WAYPOINT, val expectedRouteId: String? = null) : AssistEffect
 }
 
 data class AssistViewState(
@@ -55,6 +57,10 @@ fun reduceAssist(
     var next = state
     var effects = emptyList<AssistEffect>()
     when (intent) {
+        AssistIntent.PauseMonitoring -> next = state.clearTransient().copy(
+            presentation = unavailablePresentation(),
+            ui = state.clearTransient().ui.copy(motion = Motion.Unknown),
+        )
         is AssistIntent.RouteChanged -> {
             if (intent.routeId != state.persisted.routeId || intent.destinationId != state.persisted.destinationId) {
                 next = state.clearTransient().copy(
@@ -72,6 +78,9 @@ fun reduceAssist(
             )
         }
         is AssistIntent.PresentationChanged -> {
+            // An in-flight evaluation may finish after a parked policy edit.
+            if (intent.minimumReserveKm != null && intent.minimumReserveKm != state.persisted.minimumReserveKm)
+                return AssistTransition(state)
             val incoming = intent.value
             val newWarning = incoming.recommendationKey != null &&
                 (incoming.recommendationKey !in state.persisted.exposedRecommendationKeys ||
@@ -107,8 +116,10 @@ fun reduceAssist(
                 state.presentation.targetScreen in recommendationScreens &&
                 station?.id == intent.stationId && intent.stationId.isNotBlank() && requestId.isNotBlank()
             ) {
-                next = state.copy(pending = WaypointRequest(requestId, intent.stationId), navigationResult = null, requestedScreen = null)
-                effects = listOf(AssistEffect.AddWaypoint(requestId, intent.stationId))
+                val mode = if (state.persisted.routeId == null) NavigationMode.SET_DESTINATION else NavigationMode.ADD_WAYPOINT
+                val request = WaypointRequest(requestId, intent.stationId, mode, state.persisted.routeId)
+                next = state.copy(pending = request, navigationResult = null, requestedScreen = null)
+                effects = listOf(AssistEffect.AddWaypoint(requestId, intent.stationId, mode, request.expectedRouteId))
             }
         }
         is AssistIntent.NavigationCompleted -> {
@@ -205,6 +216,7 @@ private fun WaypointResult.errorMessage(): String? = when (this) {
     is WaypointResult.TimedOut -> "내비게이션 응답 시간이 초과됐어요. 다시 시도해 주세요."
     is WaypointResult.Cancelled -> "경유지 추가가 취소됐어요. 다시 시도해 주세요."
     is WaypointResult.Unsupported -> "현재 내비게이션에서 경유지 추가를 지원하지 않아요. 다시 시도할 수 있어요."
+    is WaypointResult.CapacityReached -> "내비게이션에 더 추가할 수 있는 경유지가 없어요. 기존 경유지를 확인해 주세요."
 }
 
 private fun AssistStoredState.clearExposure() = copy(lastRecommendationKey = null, exposedRecommendationKeys = emptySet())

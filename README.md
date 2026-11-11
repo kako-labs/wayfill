@@ -14,6 +14,8 @@
 
 제품 설계와 구현 순서는 [`docs/superpowers/specs`](docs/superpowers/specs)와 [`docs/superpowers/plans`](docs/superpowers/plans)에 있습니다.
 
+11월 11일 제품 준비 변경에는 홈·정차 설정, 공유 런타임/모니터링 서비스, 목적지/경유지 요청 구분, debug 전용 네이티브 시연, 주유소 서버 경계와 Android 화면 검사/CI가 포함됩니다. [검증과 실제 화면](docs/product-readiness-2026-11-11.md), [다른 기기용 소스 전달](docs/submission/portable-source.md), [제출 문서](docs/submission/README.md)를 확인하세요. SDK가 없는 기본 앱은 미지원 상태를 표시하며, debug 앱 홈에서만 ‘시연 모드 · 예시 데이터’에 들어갑니다. release에는 시연 코드가 없습니다.
+
 ## 승인된 뽀동이 UI 기준선
 
 주유가 필요한 이유를 먼저 설명하고, 메시지마다 뽀동이가 함께하며 정차·주유 후에는 귀엽게 반응하는 승인 UI 전달본을 함께 보존합니다.

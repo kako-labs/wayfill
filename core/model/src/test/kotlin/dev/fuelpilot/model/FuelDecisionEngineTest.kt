@@ -7,6 +7,23 @@ import org.junit.Test
 class FuelDecisionEngineTest {
     private val engine = FuelDecisionEngine()
 
+    @Test fun routeReserveIncludesTheActualRoadDistanceToTheStation() {
+        for (roadDistance in listOf(35.0, 85.0)) {
+            val candidate = station("detour", "Detour", roadDistance, 20.0, openStatus = OpenStatus.OPEN)
+            val input = FuelDecisionInput(80.0, 50.0, ActiveRoute("route", "destination", 100.0), listOf(candidate))
+            assertEquals(FuelDecision.Unavailable(UnavailableReason.NO_SAFE_STATION), engine.evaluate(input))
+        }
+    }
+
+    @Test fun routeStopAndNextRemainingRangeIncludeTheirDetours() {
+        val primary = station("a", "A", 25.0, 20.0, openStatus = OpenStatus.OPEN)
+        val next = station("b", "B", 90.0, 60.0, openStatus = OpenStatus.OPEN)
+        val result = engine.evaluate(FuelDecisionInput(80.0, 50.0,
+            ActiveRoute("route", "destination", 100.0), listOf(primary, next))) as FuelDecision.Recommendation
+        assertEquals(55.0, result.rangeAfterStopKm, 0.0)
+        assertEquals(-10.0, result.rangeAfterNextKm!!, 0.0)
+    }
+
     @Test
     fun recommendationIncludesFirstRouteCandidateAfterLastSafeStop() {
         val lastSafe = station(

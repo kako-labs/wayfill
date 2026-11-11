@@ -1,5 +1,7 @@
 # 앱 개발 세션 인계
 
+2026-11-11 후속 제품 준비: 최신 `integrate/podong-approved`의 [제품 준비 기록](product-readiness-2026-11-11.md)을 먼저 읽는다. 회사 앱의 별도 세션에는 고정 UI 태그와 최신 통합 브랜치를 구분해서 적용한다. `AssistRuntime`은 Application과 서비스가 공유하며, 별도 AssistViewModel을 중복 생성하지 않는다. 새 목적지 설정/기존 경유지 추가 계약과 실제 POI 조립 경계는 최신 브랜치 기준이다.
+
 ## 다음 기기에서 그대로 전달할 문장
 
 ```text
@@ -8,7 +10,7 @@ https://github.com/kako-labs/fuel-pilot 의 integrate/podong-approved 최신 브
 
 ## 연결 순서
 
-1. 기존 회사 앱의 현재 변경을 보존하고 새 작업 브랜치에서 시작한다. 이 저장소는 UI 전달 모듈이며 회사 앱 전체를 대체하지 않는다.
+1. 기존 회사 앱의 현재 변경을 보존하고 새 작업 브랜치에서 시작한다. 이 저장소는 UI 모듈과 연결용 Android 호스트 앱을 포함한다. 회사 앱의 실제 SDK 연결을 덮어쓰지 말고 최신 포트 계약과 승인 UI를 통합한다.
 2. `feature/assist`의 승인 UI를 사용한다. `PodongClips.kt`와 아틀라스, `PodongAnimation.kt`의 승인 버전을 유지한다. 상세 Gradle/JDK 설정은 [ANDROID-INTEGRATION.md](ANDROID-INTEGRATION.md)를 따른다.
 3. ViewModel이 `FuelUiState`와 reducer 갱신을 소유한다. 실제 차량 상태 전까지 `Motion.Unknown`을 유지한다.
 4. 검증된 주유 완료 데이터로 `RefuelConfirmed`를 전달한다. `seenIds`, 모션 설정을 이벤트 구독 전에 복원한다. 이벤트 재전달 시 같은 ID를 사용한다.

@@ -42,7 +42,7 @@ class FuelDecisionEngine {
             .sortedWith(compareBy<FuelStationCandidate> { it.distanceAlongRouteKm }.thenBy { it.name })
             .toList()
         val safeStations = routeCandidates.filter {
-            input.rangeRemainingKm - checkNotNull(it.distanceAlongRouteKm) >= input.minimumReserveKm
+            input.rangeRemainingKm - it.distanceFromCurrentKm >= input.minimumReserveKm
         }
 
         val lastSafe = safeStations.lastOrNull()
@@ -64,9 +64,9 @@ class FuelDecisionEngine {
             primary = lastSafe,
             alternatives = safeStations.asReversed().drop(1).take(2),
             predictedArrivalRangeKm = predictedArrivalRangeKm,
-            rangeAfterStopKm = input.rangeRemainingKm - routeDistance,
+            rangeAfterStopKm = input.rangeRemainingKm - lastSafe.distanceFromCurrentKm,
             nextAfterPrimary = nextAfterPrimary,
-            rangeAfterNextKm = nextAfterPrimary?.distanceAlongRouteKm?.let {
+            rangeAfterNextKm = nextAfterPrimary?.distanceFromCurrentKm?.let {
                 input.rangeRemainingKm - it
             },
             stage = if (

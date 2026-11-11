@@ -15,6 +15,71 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppDependenciesTest {
+    @Test fun productionStationQueryUsesTheSameOriginAndRouteAsDecisionInput() = runTest {
+        var queries = 0
+        val base = fixture()
+        val stations = object : ContextualStationRepository {
+            override suspend fun findStations(): StationResult = error("Context-free query must not be used")
+            override suspend fun findStationsFor(origin: VehicleLocation, route: ActiveRoute?): StationResult {
+                queries++
+                assertEquals(VehicleLocation(37.0,127.0), origin)
+                assertEquals(ActiveRoute("route", "destination", 95.0), route)
+                return StationResult.Available(listOf(candidate))
+            }
+        }
+        val deps = AppDependencies(base.store,base.energy,base.location,stations,base.navigation,base.vehicleEvents)
+        val result = deps.coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertEquals(1,queries)
+        assertEquals(AssistAvailability.READY,result.availability)
+    }
+
+    @Test fun changedRouteOrUnknownWaypointCapacityNeverCallsNavigator() = runTest {
+        for (capabilities in listOf(
+            NavigationCapabilities(true, true, 2, 0, "different-route"),
+            NavigationCapabilities(true, true, null, null, "route"),
+        )) {
+            var calls = 0
+            val vm = start(fixture(navigation = object : NavigationRepository {
+                override suspend fun readRoute() = RouteResult.Available(ActiveRoute("route", "destination", 95.0))
+                override suspend fun capabilities() = capabilities
+                override suspend fun addWaypoint(request: WaypointRequest): WaypointResult {
+                    calls++; return WaypointResult.Succeeded(request.requestId, request.stationId)
+                }
+            }))
+            runCurrent(); vm.dispatch(AssistIntent.SelectStation("a")); runCurrent()
+            assertEquals(0, calls)
+            assertFalse(vm.state.value.navigationResult is WaypointResult.Succeeded)
+        }
+    }
+
+    @Test fun nearbySelectionSetsDestinationAndDoesNotAppendAnExistingRouteWaypoint() = runTest {
+        var destinations = 0; var waypoints = 0
+        val vm = start(fixture(navigation = object : NavigationRepository {
+            override suspend fun readRoute() = RouteResult.Available(null)
+            override suspend fun capabilities() = NavigationCapabilities(true,true,2,0)
+            override suspend fun setDestination(request: WaypointRequest): WaypointResult {
+                destinations++; assertEquals(NavigationMode.SET_DESTINATION,request.mode)
+                return WaypointResult.Succeeded(request.requestId,request.stationId)
+            }
+            override suspend fun addWaypoint(request: WaypointRequest): WaypointResult {
+                waypoints++; return WaypointResult.Failed(request.requestId,request.stationId)
+            }
+        })); runCurrent()
+        vm.dispatch(AssistIntent.SelectStation("a")); runCurrent()
+        assertEquals(1,destinations); assertEquals(0,waypoints)
+        assertEquals(Screen.Added,vm.state.value.ui.screen)
+    }
+
+    @Test fun fullWaypointCapacityReturnsAnExplicitFailureWithoutCallingNavigator() = runTest {
+        var calls=0
+        val vm=start(fixture(navigation=object: NavigationRepository {
+            override suspend fun readRoute()=RouteResult.Available(ActiveRoute("route","destination",95.0))
+            override suspend fun capabilities()=NavigationCapabilities(true,true,2,2,"route")
+            override suspend fun addWaypoint(request: WaypointRequest): WaypointResult { calls++; return WaypointResult.Succeeded(request.requestId,request.stationId) }
+        }));runCurrent();vm.dispatch(AssistIntent.SelectStation("a"));runCurrent()
+        assertEquals(0,calls);assertTrue(vm.state.value.navigationResult is WaypointResult.CapacityReached)
+    }
+
     @Test fun coordinatorUsesTheStoredReserveInsteadOfHardCodedFifty() = runTest {
         val store = object : AssistStateStore {
             override suspend fun read() = AssistStoredState(minimumReserveKm = 70)
@@ -144,6 +209,8 @@ class AppDependenciesTest {
     ) = object : NavigationRepository {
         override suspend fun readRoute() = RouteResult.Available(route)
         override suspend fun addWaypoint(request: WaypointRequest) = result(request)
+        override suspend fun setDestination(request: WaypointRequest) = result(request)
+        override suspend fun capabilities() = NavigationCapabilities(true,true,2,0,route?.id)
     }
 
     private val candidate = FuelStationCandidate("a","Station A",20.0,20.0,

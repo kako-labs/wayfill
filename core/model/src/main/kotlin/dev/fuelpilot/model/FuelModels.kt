@@ -33,7 +33,9 @@ data class ActiveRoute(
 data class FuelStationCandidate(
     val id: String,
     val name: String,
+    /** Verified road distance to the station, including the approach/detour. */
     val distanceFromCurrentKm: Double,
+    /** Progress along the active route; used for ordering and alert timing, not fuel reachability. */
     val distanceAlongRouteKm: Double? = null,
     val etaMinutes: Int? = null,
     val detourMinutes: Int? = null,

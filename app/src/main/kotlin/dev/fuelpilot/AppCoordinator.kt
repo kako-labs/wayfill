@@ -36,8 +36,14 @@ class AppCoordinator(private val dependencies: AppDependencies) {
         val e = async { readOr<EnergyResult>(EnergyResult.Unavailable) { dependencies.energy.readEnergy() } }
         val l = async { readOr<LocationResult>(LocationResult.Unavailable) { dependencies.location.readLocation() } }
         val r = async { readOr<RouteResult>(RouteResult.Unavailable) { dependencies.navigation.readRoute() } }
-        val s = async { readOr<StationResult>(StationResult.Unavailable) { dependencies.stations.findStations() } }
-        val energy = e.await(); val location = l.await(); val route = r.await(); val stations = s.await()
+        val energy = e.await(); val location = l.await(); val route = r.await()
+        val stations = readOr<StationResult>(StationResult.Unavailable) {
+            val contextual = dependencies.stations as? ContextualStationRepository
+            if (contextual == null) dependencies.stations.findStations()
+            else if (location is LocationResult.Available && route is RouteResult.Available)
+                contextual.findStationsFor(location.location, route.route)
+            else StationResult.Unavailable
+        }
         val intents = mutableListOf<AssistIntent>()
         // Available(null) alone means confirmed no active destination. Unsupported is not nearby mode.
         if (route is RouteResult.Available) intents += AssistIntent.RouteChanged(route.route?.id, route.route?.id)
@@ -68,7 +74,7 @@ class AppCoordinator(private val dependencies: AppDependencies) {
                 mapper.map(AssistPresentationInput(engine.evaluate(input), input, activeRoute?.id))
             }
         }
-        intents += AssistIntent.PresentationChanged(presentation)
+        intents += AssistIntent.PresentationChanged(presentation, minimumReserveKm = reserve)
         intents
     }
 
@@ -82,12 +88,12 @@ class AppCoordinator(private val dependencies: AppDependencies) {
     }
 
     private suspend fun deliver(assist: AssistViewModel, effect: AssistEffect.AddWaypoint) {
-        val request = WaypointRequest(effect.requestId, effect.stationId)
+        val request = WaypointRequest(effect.requestId, effect.stationId, effect.mode, effect.expectedRouteId)
         if (assist.state.value.pending != request) return
         coroutineScope {
             val operation = launch {
                 val result = try {
-                    withTimeout(dependencies.navigationTimeoutMs) { dependencies.navigation.addWaypoint(request) }
+                    withTimeout(dependencies.navigationTimeoutMs) { navigate(request) }
                 } catch (_: TimeoutCancellationException) {
                     WaypointResult.TimedOut(request.requestId, request.stationId)
                 } catch (cancelled: CancellationException) { throw cancelled
@@ -97,6 +103,23 @@ class AppCoordinator(private val dependencies: AppDependencies) {
             try { assist.state.first { it.pending != request } }
             finally { operation.cancelAndJoin() }
         }
+    }
+
+    private suspend fun navigate(request: WaypointRequest): WaypointResult {
+        val capabilities = dependencies.navigation.capabilities()
+        if (request.mode == NavigationMode.SET_DESTINATION) {
+            if (capabilities.activeRouteId != null) return WaypointResult.Cancelled(request.requestId, request.stationId)
+            return if (capabilities.supportsDestination) dependencies.navigation.setDestination(request)
+                else WaypointResult.Unsupported(request.requestId, request.stationId)
+        }
+        val max = capabilities.maxWaypoints
+        val current = capabilities.currentWaypoints
+        if (!capabilities.supportsWaypoint || max == null || current == null || max < 0 || current < 0)
+            return WaypointResult.Unsupported(request.requestId, request.stationId)
+        if (current >= max) return WaypointResult.CapacityReached(request.requestId, request.stationId)
+        if (request.expectedRouteId == null || capabilities.activeRouteId != request.expectedRouteId)
+            return WaypointResult.Cancelled(request.requestId, request.stationId)
+        return dependencies.navigation.addWaypoint(request)
     }
 
     private fun unavailable(value: AssistAvailability) =

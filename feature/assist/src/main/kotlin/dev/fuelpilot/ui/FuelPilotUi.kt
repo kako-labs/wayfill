@@ -282,8 +282,10 @@ private fun FuelPilotUi(
 }
 
 @Composable fun FuelPilotSettings(state: AssistViewState, onIntent: (AssistIntent) -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize()) {
-        Settings(state.ui, { if (it == AssistIntent.Continue) onBack() else onIntent(it) }, state.persisted.minimumReserveKm, state.ready && state.ui.motion == Motion.Parked)
+    CompositionLocalProvider(LocalPodongStill provides (!state.ui.characterEnabled || state.ui.reduceMotion)) {
+        Box(modifier.fillMaxSize()) {
+            Settings(state.ui, { if (it == AssistIntent.Continue) onBack() else onIntent(it) }, state.persisted.minimumReserveKm, state.ready && state.ui.motion == Motion.Parked)
+        }
     }
 }
 
