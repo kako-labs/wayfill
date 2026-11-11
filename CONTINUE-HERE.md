@@ -1,5 +1,7 @@
 # FUEL PILOT 이어가기 · 2026-11-11
 
+**찾지 못했던 문제를 막기 위한 고정 진입점:** [전체 인계 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-handoff-2026-11-11)와 [다른 노트북 인계 문서](docs/CROSS-DEVICE-2026-11-11.md)를 먼저 확인한다. 기본 `main`은 초기 상태이며 현재 앱은 `integrate/podong-approved`에 있다.
+
 ## 최신 코드 받기
 
 ```powershell
