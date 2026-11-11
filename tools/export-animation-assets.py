@@ -6,7 +6,7 @@ from PIL import Image
 repo=Path(__file__).resolve().parents[1]
 run=Path(sys.argv[1]) if len(sys.argv)>1 else Path('D:/hackathon-tmp/fuel-pilot-animation-work/podong-v3')
 out=repo/'web/assets/animation';out.mkdir(parents=True,exist_ok=True)
-native=repo/'android/fuel-pilot-ui/src/main/res/drawable-nodpi'
+native=repo/'feature/assist/src/main/res/drawable-nodpi'
 manifest=json.loads((run/'manifest.json').read_text(encoding='utf-8'))
 encoder=next(Path('D:/hackathon-tmp/fuel-pilot-animation-work/tools/libwebp').rglob('img2webp.exe'))
 shutil.copy2(run/'sprite-sheet-alpha.png',out/'podong-atlas.png')
@@ -41,5 +41,5 @@ for name,clip in data['clips'].items():
     viewport='SpriteRect({x},{y},{w},{h})'.format(**clip['viewport'])
     lines.append(f'        "{name}" to SpriteClip(listOf({rects}),listOf({durations}),{viewport}),')
 lines+=['    )','}']
-(repo/'android/fuel-pilot-ui/src/main/java/dev/fuelpilot/ui/PodongClips.kt').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+(repo/'feature/assist/src/main/kotlin/dev/fuelpilot/ui/PodongClips.kt').write_text('\n'.join(lines)+'\n',encoding='utf-8')
 (out/'PROVENANCE.json').write_text(json.dumps({'provider':'codex','generation':{name:len(clip['frames']) for name,clip in data['clips'].items()},'pipeline':'prepare → gen-set → component extraction → compose-atlas → export-pngs → animated WebP','runFolder':str(run),'sourceAtlasSha256':hashlib.sha256((out/'podong-atlas.png').read_bytes()).hexdigest()},indent=2),encoding='utf-8')

@@ -10,6 +10,7 @@ junit = "4.13.2"
 [libraries]
 core-ktx = { module = "androidx.core:core-ktx", version = "1.16.0" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-foundation = { module = "androidx.compose.foundation:foundation" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
