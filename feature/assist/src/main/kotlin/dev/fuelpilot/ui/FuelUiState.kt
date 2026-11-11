@@ -11,6 +11,7 @@ data class FuelUiState(
     val celebration: Celebration? = null, val refuel: RefuelEvent? = null,
     val seenIds: Set<String> = emptySet(), val pendingStation: String? = null,
     val routeStation: String? = null, val error: String? = null,
+    val detailsAvailable: Boolean = false, val statusMessage: String? = null,
 )
 sealed interface FuelUiEvent {
     data class MotionChanged(val value: Motion) : FuelUiEvent
@@ -52,7 +53,7 @@ fun reduceFuelUi(state: FuelUiState, event: FuelUiEvent, nowMs: Long = System.na
     is FuelUiEvent.MotionChanged -> state.copy(
         motion = event.value,
         celebration = state.celebration.takeIf { event.value == Motion.Parked },
-        screen = if (event.value != Motion.Parked && state.screen in listOf(Screen.Refuel, Screen.Recommendation, Screen.LongDrive, Screen.Settings, Screen.Analysis)) Screen.Widget else state.screen,
+        screen = if (event.value != Motion.Parked) Screen.Widget else state.screen,
     )
     is FuelUiEvent.RefuelConfirmed -> {
         val e = event.value
