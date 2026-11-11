@@ -2,16 +2,31 @@ package dev.fuelpilot.model
 
 class FuelDecisionEngine {
     fun evaluate(input: FuelDecisionInput): FuelDecision {
-        unavailableFor(input.energyStatus, UnavailableReason.STALE_ENERGY, UnavailableReason.ENERGY_UNAVAILABLE)
+        unavailableFor(
+            input.energyStatus,
+            UnavailableReason.STALE_ENERGY,
+            UnavailableReason.ENERGY_UNAVAILABLE,
+            UnavailableReason.ENERGY_UNSUPPORTED,
+        )
             ?.let { return it }
-        unavailableFor(input.locationStatus, UnavailableReason.STALE_LOCATION, UnavailableReason.LOCATION_UNAVAILABLE)
+        unavailableFor(
+            input.locationStatus,
+            UnavailableReason.STALE_LOCATION,
+            UnavailableReason.LOCATION_UNAVAILABLE,
+            UnavailableReason.LOCATION_UNSUPPORTED,
+        )
             ?.let { return it }
 
         return input.route?.let { evaluateRoute(input, it) } ?: evaluateNearby(input)
     }
 
     private fun evaluateRoute(input: FuelDecisionInput, route: ActiveRoute): FuelDecision {
-        unavailableFor(input.routeStatus, UnavailableReason.STALE_ROUTE, UnavailableReason.ROUTE_UNAVAILABLE)
+        unavailableFor(
+            input.routeStatus,
+            UnavailableReason.STALE_ROUTE,
+            UnavailableReason.ROUTE_UNAVAILABLE,
+            UnavailableReason.ROUTE_UNSUPPORTED,
+        )
             ?.let { return it }
 
         val predictedArrivalRangeKm = input.rangeRemainingKm - route.remainingDistanceKm
@@ -19,18 +34,23 @@ class FuelDecisionEngine {
             return FuelDecision.NoAction(predictedArrivalRangeKm)
         }
 
-        val safeStations = input.stations
+        val routeCandidates = input.stations
             .asSequence()
             .filter { it.fuelCompatible }
             .filter { it.effectiveOpenStatus != OpenStatus.CLOSED }
             .filter { it.distanceAlongRouteKm != null }
-            .filter { input.rangeRemainingKm - checkNotNull(it.distanceAlongRouteKm) >= input.minimumReserveKm }
             .sortedWith(compareBy<FuelStationCandidate> { it.distanceAlongRouteKm }.thenBy { it.name })
             .toList()
+        val safeStations = routeCandidates.filter {
+            input.rangeRemainingKm - checkNotNull(it.distanceAlongRouteKm) >= input.minimumReserveKm
+        }
 
         val lastSafe = safeStations.lastOrNull()
             ?: return FuelDecision.Unavailable(UnavailableReason.NO_SAFE_STATION)
         val routeDistance = checkNotNull(lastSafe.distanceAlongRouteKm)
+        val nextAfterPrimary = routeCandidates.firstOrNull {
+            checkNotNull(it.distanceAlongRouteKm) > routeDistance
+        }
         val shouldAlert = routeDistance <= input.alertPolicy.leadDistanceKm ||
             (lastSafe.etaMinutes?.let { it <= input.alertPolicy.leadMinutes } == true)
 
@@ -45,6 +65,18 @@ class FuelDecisionEngine {
             alternatives = safeStations.asReversed().drop(1).take(2),
             predictedArrivalRangeKm = predictedArrivalRangeKm,
             rangeAfterStopKm = input.rangeRemainingKm - routeDistance,
+            nextAfterPrimary = nextAfterPrimary,
+            rangeAfterNextKm = nextAfterPrimary?.distanceAlongRouteKm?.let {
+                input.rangeRemainingKm - it
+            },
+            stage = if (
+                routeDistance <= input.alertPolicy.passingDistanceKm ||
+                (lastSafe.etaMinutes?.let { it <= input.alertPolicy.passingMinutes } == true)
+            ) {
+                RecommendationStage.PASSING
+            } else {
+                RecommendationStage.RECOMMEND
+            },
         )
     }
 
@@ -76,9 +108,11 @@ class FuelDecisionEngine {
         status: SignalStatus,
         staleReason: UnavailableReason,
         unavailableReason: UnavailableReason,
+        unsupportedReason: UnavailableReason,
     ): FuelDecision.Unavailable? = when (status) {
         SignalStatus.FRESH -> null
         SignalStatus.STALE -> FuelDecision.Unavailable(staleReason)
         SignalStatus.UNAVAILABLE -> FuelDecision.Unavailable(unavailableReason)
+        SignalStatus.UNSUPPORTED -> FuelDecision.Unavailable(unsupportedReason)
     }
 }

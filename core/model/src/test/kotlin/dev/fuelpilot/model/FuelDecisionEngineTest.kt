@@ -8,6 +8,117 @@ class FuelDecisionEngineTest {
     private val engine = FuelDecisionEngine()
 
     @Test
+    fun recommendationIncludesFirstRouteCandidateAfterLastSafeStop() {
+        val lastSafe = station(
+            id = "last-safe",
+            name = "마지막안심주유소",
+            distanceKm = 20.0,
+            routeDistanceKm = 20.0,
+            openStatus = OpenStatus.OPEN,
+        )
+        val unsafeNext = station(
+            id = "unsafe-next",
+            name = "다음주유소",
+            distanceKm = 110.0,
+            routeDistanceKm = 110.0,
+            openStatus = OpenStatus.OPEN,
+        )
+
+        val result = engine.evaluate(
+            FuelDecisionInput(
+                rangeRemainingKm = 100.0,
+                minimumReserveKm = 50.0,
+                route = ActiveRoute("route-passing", "목적지", 130.0),
+                stations = listOf(lastSafe, unsafeNext),
+            ),
+        ) as FuelDecision.Recommendation
+
+        assertEquals(lastSafe, result.primary)
+        assertEquals(unsafeNext, result.nextAfterPrimary)
+        assertEquals(-10.0, result.rangeAfterNextKm!!, 0.001)
+    }
+
+    @Test
+    fun unsafeNextCandidateIsNeverPromotedToPrimary() {
+        val lastSafe = station(
+            id = "last-safe",
+            name = "마지막안심주유소",
+            distanceKm = 15.0,
+            routeDistanceKm = 15.0,
+            openStatus = OpenStatus.OPEN,
+        )
+        val unsafeNext = station(
+            id = "unsafe-next",
+            name = "다음주유소",
+            distanceKm = 90.0,
+            routeDistanceKm = 90.0,
+            openStatus = OpenStatus.OPEN,
+        )
+
+        val result = engine.evaluate(
+            FuelDecisionInput(
+                rangeRemainingKm = 100.0,
+                minimumReserveKm = 50.0,
+                route = ActiveRoute("route-safety", "목적지", 120.0),
+                stations = listOf(lastSafe, unsafeNext),
+            ),
+        ) as FuelDecision.Recommendation
+
+        assertEquals(lastSafe, result.primary)
+        assertTrue(unsafeNext !in result.alternatives)
+        assertEquals(unsafeNext, result.nextAfterPrimary)
+    }
+
+    @Test
+    fun passingStageStartsOnlyInsidePassingThreshold() {
+        fun stageAt(distanceKm: Double, etaMinutes: Int): RecommendationStage {
+            val primary = station(
+                id = "primary-$distanceKm-$etaMinutes",
+                name = "마지막안심주유소",
+                distanceKm = distanceKm,
+                routeDistanceKm = distanceKm,
+                etaMinutes = etaMinutes,
+                openStatus = OpenStatus.OPEN,
+            )
+            val result = engine.evaluate(
+                FuelDecisionInput(
+                    rangeRemainingKm = 80.0,
+                    minimumReserveKm = 50.0,
+                    route = ActiveRoute("route-threshold", "목적지", 60.0),
+                    stations = listOf(primary),
+                ),
+            ) as FuelDecision.Recommendation
+            return result.stage
+        }
+
+        assertEquals(RecommendationStage.RECOMMEND, stageAt(distanceKm = 5.1, etaMinutes = 6))
+        assertEquals(RecommendationStage.PASSING, stageAt(distanceKm = 5.0, etaMinutes = 6))
+        assertEquals(RecommendationStage.PASSING, stageAt(distanceKm = 6.0, etaMinutes = 5))
+    }
+
+    @Test
+    fun unsupportedSignalsReturnMatchingUnavailableReasons() {
+        val base = FuelDecisionInput(
+            rangeRemainingKm = 100.0,
+            route = ActiveRoute("route-unsupported", "목적지", 80.0),
+            stations = emptyList(),
+        )
+
+        assertEquals(
+            FuelDecision.Unavailable(UnavailableReason.ENERGY_UNSUPPORTED),
+            engine.evaluate(base.copy(energyStatus = SignalStatus.UNSUPPORTED)),
+        )
+        assertEquals(
+            FuelDecision.Unavailable(UnavailableReason.LOCATION_UNSUPPORTED),
+            engine.evaluate(base.copy(locationStatus = SignalStatus.UNSUPPORTED)),
+        )
+        assertEquals(
+            FuelDecision.Unavailable(UnavailableReason.ROUTE_UNSUPPORTED),
+            engine.evaluate(base.copy(routeStatus = SignalStatus.UNSUPPORTED)),
+        )
+    }
+
+    @Test
     fun `returns no action when destination arrival keeps the requested reserve`() {
         val result = engine.evaluate(
             FuelDecisionInput(

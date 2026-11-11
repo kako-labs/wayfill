@@ -1,20 +1,25 @@
 package dev.fuelpilot.model
 
-enum class SignalStatus { FRESH, STALE, UNAVAILABLE }
+enum class SignalStatus { FRESH, STALE, UNAVAILABLE, UNSUPPORTED }
 
 enum class OpenStatus { OPEN, CLOSED, UNKNOWN }
 
 enum class RecommendationMode { LAST_SAFE_STOP, NEARBY }
+
+enum class RecommendationStage { RECOMMEND, PASSING }
 
 enum class SelectionBasis { LAST_SAFE_STOP, MINIMUM_DETOUR, NEAREST_REACHABLE }
 
 enum class UnavailableReason {
     STALE_ENERGY,
     ENERGY_UNAVAILABLE,
+    ENERGY_UNSUPPORTED,
     STALE_LOCATION,
     LOCATION_UNAVAILABLE,
+    LOCATION_UNSUPPORTED,
     STALE_ROUTE,
     ROUTE_UNAVAILABLE,
+    ROUTE_UNSUPPORTED,
     NO_SAFE_STATION,
     NO_REACHABLE_STATION,
 }
@@ -43,6 +48,8 @@ data class FuelStationCandidate(
 data class AlertPolicy(
     val leadDistanceKm: Double = 20.0,
     val leadMinutes: Int = 15,
+    val passingDistanceKm: Double = 5.0,
+    val passingMinutes: Int = 5,
 )
 
 data class FuelDecisionInput(
@@ -71,6 +78,9 @@ sealed interface FuelDecision {
         val alternatives: List<FuelStationCandidate>,
         val predictedArrivalRangeKm: Double? = null,
         val rangeAfterStopKm: Double,
+        val nextAfterPrimary: FuelStationCandidate? = null,
+        val rangeAfterNextKm: Double? = null,
+        val stage: RecommendationStage = RecommendationStage.RECOMMEND,
     ) : FuelDecision
 
     data class Unavailable(val reason: UnavailableReason) : FuelDecision
