@@ -181,7 +181,7 @@ class FuelDecisionUiMapperTest {
             baseKey,
             mapper.map(baseInput.copy(decision = baseDecision.copy(mode = RecommendationMode.NEARBY))).recommendationKey,
         )
-        assertNotEquals(
+        assertEquals(
             baseKey,
             mapper.map(baseInput.copy(decision = baseDecision.copy(stage = RecommendationStage.PASSING))).recommendationKey,
         )

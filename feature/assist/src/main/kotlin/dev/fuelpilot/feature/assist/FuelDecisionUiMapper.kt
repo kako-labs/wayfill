@@ -81,7 +81,6 @@ class FuelDecisionUiMapper {
     ): String = listOf(
         routeSnapshotId.orEmpty(),
         decision.mode.name,
-        decision.stage.name,
         decision.primary.id,
     ).joinToString(separator = "|") { value -> "${value.length}:$value" }
 
