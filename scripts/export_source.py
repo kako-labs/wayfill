@@ -45,6 +45,9 @@ def export_source(root, output, revision='HEAD', *, working_tree=False):
             mode = entry.external_attr >> 16
             if stat.S_ISLNK(mode):
                 continue
+            if entry.filename == 'gradlew':
+                entry.create_system = 3
+                entry.external_attr = ((mode | 0o111) << 16) | (entry.external_attr & 0xFFFF)
             if working_tree:
                 path = root / entry.filename
                 if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):

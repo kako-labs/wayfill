@@ -27,6 +27,7 @@ class ExportTests(unittest.TestCase):
             exporter.export_source(root, root / 'source.zip')
             with zipfile.ZipFile(root / 'source.zip') as archive:
                 self.assertEqual(b'#!/bin/sh\nexit 0\n', archive.read('gradlew'))
+                self.assertTrue((archive.getinfo('gradlew').external_attr >> 16) & 0o111)
 
     def test_export_uses_committed_source_and_omits_private_and_generated_files(self):
         exporter = load('export_source')
