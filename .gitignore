@@ -1,11 +1,15 @@
 .gradle/
 .gradle-user-home/
 .idea/
+android/.gradle/
 **/build/
 local.properties
+android/local.properties
 *.apk
 *.aab
+*.zip
 captures/
 .superpowers/
 __pycache__/
 *.pyc
+.DS_Store

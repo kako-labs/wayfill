@@ -1,0 +1,47 @@
+{
+  "cell": {
+    "width": 256,
+    "height": 256,
+    "safe_margin": 20
+  },
+  "style": "Match the attached reference's glossy warm golden-yellow hand-painted 2D mascot illustration EXACTLY. Not pixel art. Keep the warm brown outline, cream highlights, pink blush, little triangular head tuft, two little arms and two little feet. Preserve the reference's illustration fidelity and round body proportions across every frame. Do not include the detached decorative star or motion marks from the reference. Full body entirely visible. Animation director priority: coherent SAME character model and volume across all frames. Very expressive acting, broad arms and clearly readable facial expressions. Smooth continuous motion, anticipation, follow-through and settling. No sudden costume, face, body size or outline changes. The SAME main round torso stays the SAME size except intentional squash-stretch. Never normalize each pose to fill its slot.",
+  "fit": {
+    "pixel_unfake": false,
+    "resample": "lanczos",
+    "align_x": "foot-centroid",
+    "align_y": "bottom",
+    "ground_frames": false
+  },
+  "states": {
+    "calm": {
+      "frames": 8,
+      "fps": 8,
+      "loop": true,
+      "action": "Continuous subtle parked-in-place calm idle cycle. First frame: same mascot smiling gently with both arms comfortably lowered, small dark oval eyes open. Then eyelids lower, close for a brief blink, reopen; a tiny attentive head nod and natural chest/body breathing. Last frame returns to exact first pose. Tiny 2 percent body motion only, absolutely no whole-body rotation, no hopping, no waving. Fixed feet and center. Every adjacent frame is an actual in-between eye/head/body pose, not a repeated or translated image."
+    },
+    "recommend": {
+      "frames": 16,
+      "fps": 10,
+      "loop": false,
+      "action": "Exactly SIXTEEN evenly spaced consecutive animation drawings in one horizontal row. All 16 are genuine neighboring in-betweens of ONE simple readable action, not 16 different poses. Same ground baseline, body anchor, torso volume, camera and lighting throughout. Leave generous gaps so no neighboring silhouettes touch. No symbols, motion trails, props, particles, text or speed lines. First and final pose relaxed and identical. Friendly theatrical invitation, LARGE clear arm gesture and warm face. Frames1-3 anticipate: gentle crouch with shoulders drawing in and curious eyebrows. 4-7 lift camera-right arm in a broad sweeping arc to point right; open mouth into a delighted smile and eyes brighten. 8-10 hold arm extended and lean the actual body slightly toward the indicated direction, lively head nod. 11-14 arm sweeps softly down, torso returns with small overshoot. 15-16 relaxed attentive smile. Each adjacent frame changes only slightly; no abrupt turn."
+    },
+    "small": {
+      "frames": 16,
+      "fps": 10,
+      "loop": false,
+      "action": "Exactly SIXTEEN evenly spaced consecutive animation drawings in one horizontal row. All 16 are genuine neighboring in-betweens of ONE simple readable action, not 16 different poses. Same ground baseline, body anchor, torso volume, camera and lighting throughout. Leave generous gaps so no neighboring silhouettes touch. No symbols, motion trails, props, particles, text or speed lines. First and final pose relaxed and identical. BIG cute greeting wave. 1-3 slight anticipatory dip and closed mouth smile; 4-6 left arm rises well above shoulder and eyes curve into happy crescents; 7-10 broad waving arc LEFT then RIGHT from the shoulder, palm clearly moving, mouth opens wide in joy, other arm opens for balance; 11-13 wave slows and hand lowers with gentle head tilt; 14-16 body and arm settle with a contented smile. Same body scale and feet throughout. No stiff body, no tiny invisible wrist-only gesture."
+    },
+    "full": {
+      "frames": 16,
+      "fps": 8,
+      "loop": false,
+      "action": "Exactly SIXTEEN evenly spaced consecutive animation drawings in one horizontal row. All 16 are genuine neighboring in-betweens of ONE simple readable action, not 16 different poses. Same ground baseline, body anchor, torso volume, camera and lighting throughout. Leave generous gaps so no neighboring silhouettes touch. No symbols, motion trails, props, particles, text or speed lines. First and final pose relaxed and identical. A SINGLE broad joyful full-refuel celebration, no turning around. 1-3 visibly squat/squash down 12 percent with arms drawing inward and eyes squeezed in anticipation; 4-7 stretch torso upward 10 percent while both arms sweep high into a big V, delighted wide-open mouth and crescent smiling eyes. 8-10 hold the big joyful V with head lifted and cheeks round, little feet remain anatomically coherent. 11-13 arms sweep outward/down as torso softly compresses for landing. 14-16 one small springy rebound and return to relaxed original pose. Big readable squash-stretch, no disconnected arms, no inconsistent swelling. Smooth incremental pose changes, no rear view."
+    },
+    "recovery": {
+      "frames": 16,
+      "fps": 8,
+      "loop": false,
+      "action": "Exactly SIXTEEN evenly spaced consecutive animation drawings in one horizontal row. All 16 are genuine neighboring in-betweens of ONE simple readable action, not 16 different poses. Same ground baseline, body anchor, torso volume, camera and lighting throughout. Leave generous gaps so no neighboring silhouettes touch. No symbols, motion trails, props, particles, text or speed lines. First and final pose relaxed and identical. A LARGE relieved stretch after refueling from nearly empty. 1-3 tired slump with lowered hands, half-closed eyes and a small exhausted mouth; 4-6 inhale, round cheeks, shoulders rising and hands travel up the body; 7-10 BIG overhead stretch with both arms reaching high and slightly outward, head tips back, eyes tightly happy, mouth wide open in a cute yawn; 11-13 arms open wide, exhale with relieved smile, shoulders soften; 14-16 arms float down and body relaxes in original gentle smile. One continuous stretch, no back turn, no frantic waving."
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "provider": "codex",
+  "generation": {
+    "calm": 8,
+    "recommend": 16,
+    "small": 16,
+    "full": 16,
+    "recovery": 16
+  },
+  "pipeline": "prepare \u2192 gen-set \u2192 component extraction \u2192 compose-atlas \u2192 export-pngs \u2192 animated WebP",
+  "runFolder": "D:\\hackathon-tmp\\fuel-pilot-animation-work\\podong-v3",
+  "sourceAtlasSha256": "f0b8db5f0e2fb2402e95eab4f1b918ebb0fa2d255f386633f30d119f8fdbf1f8"
+}
