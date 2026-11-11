@@ -11,4 +11,8 @@ dependencies {
     implementation(project(":core:model")); implementation(project(":data:energy")); implementation(project(":data:location")); implementation(project(":data:poi")); implementation(project(":data:navigation")); implementation(project(":feature:assist"))
     implementation(platform(libs.compose.bom)); implementation(libs.compose.ui); implementation(libs.compose.material3); implementation(libs.core.ktx); implementation(libs.activity.compose)
     testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
+    implementation(libs.coroutines.android)
+    implementation(libs.datastore.preferences)
+    implementation(libs.lifecycle.viewmodel.compose)
 }

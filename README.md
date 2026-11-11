@@ -8,7 +8,7 @@
 
 1. `git clone https://github.com/kako-labs/fuel-pilot.git`
 2. 통합 브랜치 `integrate/podong-approved`로 전환합니다.
-3. [제품 인계 문서](docs/handoff.md)를 먼저 읽습니다.
+3. [최신 이어가기 안내](CONTINUE-HERE.md)와 [제품 인계 문서](docs/handoff.md)를 먼저 읽습니다.
 4. `python scripts/dev.py doctor`로 JDK 17과 Android SDK를 확인합니다.
 5. 핵심 엔진 테스트: `./gradlew :core:model:test --no-daemon --max-workers=1`
 
@@ -33,3 +33,13 @@
 - `reference/claude-export.html`: 사용자가 지정한 뽀동이 원본 모션과 디자인 자료
 
 UI 기준선 검증: `npm.cmd test`, `npm.cmd run verify`, `.\\gradlew.bat :feature:assist:testDebugUnitTest :feature:assist:assembleDebug --no-daemon --max-workers=1 --console=plain`.
+
+## 현재 앱 실행
+
+승인 UI를 앱 시작 화면에 연결했습니다. SDK 없는 환경에서는 뽀동이와 명시적인 미지원 안내를 표시합니다. 실제 포트 연결 지점은 AppDependencies이며 화면에 시연 데이터를 주입하지 않습니다. [최신 검증 기록](docs/verification-2026-11-11.md)을 확인하세요.
+
+```powershell
+.\gradlew.bat :app:assembleDebug --no-daemon --max-workers=1
+```
+
+설치할 APK: `app/build/outputs/apk/debug/app-debug.apk`. 실제 Pleos 차량 연동 검증은 별도입니다.

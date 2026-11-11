@@ -2,6 +2,8 @@
 
 FUEL PILOT의 승인된 문구와 뽀동이 모션을 화면과 코드로 묶었습니다.
 
+**최신 앱 개발은 [CONTINUE-HERE.md](CONTINUE-HERE.md)와 integrate/podong-approved 브랜치에서 이어갑니다.** 아래 고정 태그/ZIP은 11월 10일 승인 UI 원본입니다. 현재 네이티브 코드는 feature/assist로 통합됐습니다.
+
 ## 1. 받기
 
 [승인 버전 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/podong-ui-approved-2026-11-10)에서 `fuel-pilot-ui-kit-20261110.zip`을 받아 압축을 풀면 됩니다. 저장소는 비공개이므로 접근 권한이 있는 GitHub 계정으로 로그인하세요. ZIP에는 웹 UI, 모션 파일, Android 소스 모듈과 빌드된 AAR, 두 세션 인계 문서가 함께 있습니다.

@@ -14,6 +14,28 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AssistViewModelTest {
+    @Test fun unreadableStoreDoesNotStartLiveEventsOrPretendRestoreSucceeded() = runTest {
+        var collected = false
+        val vm = AssistViewModel(object : AssistStateStore {
+            override suspend fun read(): AssistStoredState = throw java.io.IOException("unreadable")
+            override suspend fun write(state: AssistStoredState) = Unit
+        }, liveIntents = flow { collected = true }, scope = backgroundScope)
+        runCurrent()
+        assertFalse(collected); assertFalse(vm.state.value.ready)
+        assertTrue(vm.state.value.ui.statusMessage?.contains("저장") == true)
+    }
+
+    @Test fun failedDurableWriteStopsNewActionsWithoutPublishingAnUnrecordedCelebration() = runTest {
+        val vm = AssistViewModel(object : AssistStateStore {
+            override suspend fun read() = AssistStoredState()
+            override suspend fun write(state: AssistStoredState): Unit = throw java.io.IOException("disk full")
+        }, scope = backgroundScope)
+        runCurrent(); vm.dispatch(AssistIntent.MotionChanged(Motion.Parked)); runCurrent()
+        vm.dispatch(AssistIntent.RefuelConfirmed(RefuelEvent("unrecorded"))); runCurrent()
+        assertFalse(vm.state.value.ready); assertNull(vm.state.value.ui.celebration)
+        assertTrue(vm.state.value.ui.statusMessage?.contains("저장") == true)
+    }
+
     @Test fun rapidDoubleTapEmitsOneEffectAndEstablishesPendingBeforeDelivery() = runTest {
         val vm = model()
         val effects = mutableListOf<AssistEffect>()

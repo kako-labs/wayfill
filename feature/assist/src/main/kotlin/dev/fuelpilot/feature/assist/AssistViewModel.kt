@@ -3,8 +3,11 @@ package dev.fuelpilot.feature.assist
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.fuelpilot.ui.FuelUiState
+import dev.fuelpilot.ui.FuelRouteUi
+import dev.fuelpilot.ui.Screen
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,7 +42,12 @@ class AssistViewModel(
 
     init {
         (scope ?: viewModelScope).launch {
-            val restored = store.read().pruned(wallClockMs())
+            val restored = try { store.read().pruned(wallClockMs()) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) {
+                    mutableState.value = storageUnavailable(mutableState.value)
+                    return@launch
+                }
             mutableState.value = AssistViewState(
                 ready = true,
                 persisted = restored,
@@ -51,7 +59,7 @@ class AssistViewModel(
                 ),
             )
             // Subscription itself is behind restoration, not merely the event handlers.
-            launch { liveIntents.collect { intents.send(it) } }
+            val liveCollection = launch { liveIntents.collect { intents.send(it) } }
             for (intent in intents) {
                 val previous = mutableState.value
                 val transition = reduceAssist(
@@ -59,7 +67,15 @@ class AssistViewModel(
                     if (intent is AssistIntent.SelectStation) requestId() else "",
                 )
                 // Durable deduplication/exposure must succeed before publishing a celebration.
-                if (transition.state.persisted != previous.persisted) store.write(transition.state.persisted)
+                try {
+                    if (transition.state.persisted != previous.persisted) store.write(transition.state.persisted)
+                } catch (cancelled: CancellationException) { throw cancelled
+                } catch (_: Exception) {
+                    // Fail closed: no unrecorded celebration or request is published.
+                    mutableState.value = storageUnavailable(previous)
+                    liveCollection.cancel()
+                    break
+                }
                 mutableState.value = transition.state
                 transition.effects.forEach { outgoing.send(it) }
             }
@@ -69,4 +85,13 @@ class AssistViewModel(
     fun dispatch(intent: AssistIntent) {
         check(intents.trySend(intent).isSuccess) { "Assist intent channel is closed" }
     }
+
+    private fun storageUnavailable(previous: AssistViewState) = previous.copy(
+        ready = false, pending = null, navigationResult = null, requestedScreen = null,
+        activeRecommendationKey = null, overlayVisible = true,
+        presentation = AssistPresentation(FuelRouteUi(), Screen.Widget, null, AssistAvailability.UNAVAILABLE),
+        ui = previous.ui.copy(screen = Screen.Widget, refuel = null, celebration = null,
+            pendingStation = null, routeStation = null, error = null, detailsAvailable = false,
+            statusMessage = "안내 기록을 저장하거나 읽을 수 없어요. 앱을 다시 실행해 주세요."),
+    )
 }

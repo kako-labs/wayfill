@@ -268,39 +268,39 @@ Run: `git add feature/assist && git commit -m "feat: map fuel decisions to appro
 - Consumes: `AssistPresentation`, navigation `WaypointResult`, real motion/refuel events
 - Produces: `AssistIntent`, `AssistEffect.AddWaypoint(requestId, stationId)`, `AssistViewState`, `AssistStateStore`, and a single authoritative `AssistViewModel`
 
-- [ ] **Step 1: Write failing ViewModel tests**
+- [x] **Step 1: Write failing ViewModel tests**
 
 Test exact priority and failure cases: rapid double tap emits one effect; retry uses a new request ID; an old callback cannot complete the new request; timeout/cancel/Unsupported return to retryable recommendation; route change clears recommendation exposure; Moving/Unknown cancels details and celebration; new refuel outranks analysis/settings.
 
-- [ ] **Step 2: Write failing persistence tests**
+- [x] **Step 2: Write failing persistence tests**
 
 Using a temporary Preferences DataStore, persist more than 256 processed IDs and entries older/newer than 90 days. Assert pruning, restore-before-event behavior, preference restoration, recommendation-key restoration, and that celebration/`startedAtMs` are absent after a new store/ViewModel is created.
 
-- [ ] **Step 3: Run focused tests and confirm failure**
+- [x] **Step 3: Run focused tests and confirm failure**
 
 Run: `.\gradlew.bat :feature:assist:testDebugUnitTest --tests "dev.fuelpilot.feature.assist.*" --no-daemon --max-workers=1`
 
 Expected: FAIL because contract, ViewModel, and store do not exist.
 
-- [ ] **Step 4: Implement one-way intent/effect flow**
+- [x] **Step 4: Implement one-way intent/effect flow**
 
 `FuelPilotUi` emits a station-selection intent only. `AssistViewModel` atomically sets pending request state and emits exactly one `AddWaypoint` effect. Only matching request/station results can transition to Added or retryable error.
 
-- [ ] **Step 5: Implement the documented screen priority**
+- [x] **Step 5: Implement the documented screen priority**
 
 Apply the seven-level priority from the addendum in one reducer path. Keep pure transition logic testable separately from Android lifecycle collection.
 
-- [ ] **Step 6: Implement Preferences DataStore persistence**
+- [x] **Step 6: Implement Preferences DataStore persistence**
 
 Persist processed refuel IDs with timestamps, motion preferences, route ID, and recommendation key. Cap at 256 and prune older than 90 days. Restore before exposing the ViewModel as ready for live event collection.
 
-- [ ] **Step 7: Run all feature tests and lint**
+- [x] **Step 7: Run all feature tests and lint**
 
 Run: `.\gradlew.bat :feature:assist:testDebugUnitTest :feature:assist:lintDebug --no-daemon --max-workers=1`
 
 Expected: all tests and lint pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 Run: `git add feature/assist gradle/libs.versions.toml && git commit -m "feat: coordinate assist UI state and effects"`
 
@@ -320,35 +320,35 @@ Run: `git add feature/assist gradle/libs.versions.toml && git commit -m "feat: c
 - Consumes: default Unsupported repositories, `AssistViewModel`, `FuelPilotUi`
 - Produces: an app entry point that renders the approved UI only from real/explicitly unavailable state and processes navigation effects through the repository contract
 
-- [ ] **Step 1: Write a failing dependency test**
+- [x] **Step 1: Write a failing dependency test**
 
 Assert the default app dependency container uses Unsupported repositories and contains no sample station, coordinate, range, or successful navigation result.
 
-- [ ] **Step 2: Run the app unit test and confirm failure**
+- [x] **Step 2: Run the app unit test and confirm failure**
 
 Run: `.\gradlew.bat :app:testDebugUnitTest --tests "dev.fuelpilot.AppDependenciesTest" --no-daemon --max-workers=1`
 
 Expected: FAIL because the dependency container does not exist.
 
-- [ ] **Step 3: Implement the application dependency container**
+- [x] **Step 3: Implement the application dependency container**
 
 Construct default Unsupported ports and the Preferences DataStore-backed state store. Keep SDK-specific construction behind this boundary.
 
-- [ ] **Step 4: Replace the placeholder activity**
+- [x] **Step 4: Replace the placeholder activity**
 
 Collect `AssistViewState`, render `FuelPilotUi` when the assist surface is visible, leave `mapContent` empty, dispatch UI intents to the ViewModel, and send navigation effects to `NavigationRepository`.
 
-- [ ] **Step 5: Update product and handoff documentation**
+- [x] **Step 5: Update product and handoff documentation**
 
 Document what is integrated, what remains Unsupported, how to open the web baseline, and the exact commands/results from current verification. Do not claim Pleos device integration.
 
-- [ ] **Step 6: Run app build and unit tests**
+- [x] **Step 6: Run app build and unit tests**
 
 Run: `.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug --no-daemon --max-workers=1`
 
 Expected: unit tests pass and debug APK assembles with no demo data path.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Run: `git add app README.md docs && git commit -m "feat: connect approved assist UI to app"`
 
