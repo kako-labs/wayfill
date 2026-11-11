@@ -26,7 +26,7 @@ Opinet API 사용 승인과 서버 키, HTTPS 배포 주소, 공급자 약관·�
 
 - 웹 검사: 17개 통과. 웹/Android 공통 아틀라스 72프레임 일치 검사 통과.
 - 서버 검사: 9개 통과.
-- Python 전달·격리·아키텍처 도구 검사: 11개 통과.
+- Python 전달·격리·아키텍처 도구 검사: 12개 통과. Windows autocrlf가 Unix 실행 스크립트에 CRLF를 넣는 경우를 RED로 재현한 뒤 호스트 설정과 무관하게 내보내도록 수정했다.
 - Android 전체 검사: `python scripts/dev.py verify` 통과. 마지막 설정 계산 경합 보완을 포함한 `verifyAll :app:assembleRelease :app:connectedDebugAndroidTest --continue --no-daemon --max-workers=1 --console=plain`도 통과했다. 단위 검사 111개, 전체 명령 534개 작업, 5분 10초.
 - release 빌드와 DEX 시연 격리 검사 통과.
 - Android 35 표준 AOSP 에뮬레이터에서 시스템 알림 권한 창의 거부 버튼을 눌렀다. 권한 필요 메시지를 확인했고 MonitoringService 레코드는 없었다.

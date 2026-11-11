@@ -12,6 +12,8 @@ python scripts/export_source.py ../fuel-pilot-source.zip --ref HEAD
 
 The default reads committed bytes using git archive. It never collects untracked files or local edits. It filters Git metadata, caches, build outputs, local.properties, .superpowers, environment files, common credentials/private-key files and distributable binaries. The Gradle wrapper JAR remains because it is a required build bootstrapper, not a vehicle SDK. Git export-ignore attributes also apply. Source symlinks are omitted rather than followed. Review the printed count and actual archive contents before sharing.
 
+The exporter overrides host `core.autocrlf`/`core.eol` when making the archive, while preserving explicit repository attributes. POSIX wrappers remain LF even when exported on Windows; Windows batch wrappers follow `*.bat eol=crlf`. The `--working-tree` option intentionally copies local bytes, so it does not promise normalized line endings.
+
 If an already committed source path needs an explicitly reviewed local edit in a temporary archive:
 
 ```text

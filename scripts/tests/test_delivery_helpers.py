@@ -15,6 +15,19 @@ def load(name):
     return module
 
 class ExportTests(unittest.TestCase):
+    def test_windows_autocrlf_does_not_break_the_unix_wrapper_in_an_export(self):
+        exporter = load('export_source')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(['git', 'init', '-q', str(root)], check=True)
+            subprocess.run(['git', '-C', str(root), 'config', 'core.autocrlf', 'true'], check=True)
+            (root / 'gradlew').write_bytes(b'#!/bin/sh\nexit 0\n')
+            subprocess.run(['git', '-C', str(root), 'add', 'gradlew'], check=True)
+            subprocess.run(['git', '-C', str(root), '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture'], check=True)
+            exporter.export_source(root, root / 'source.zip')
+            with zipfile.ZipFile(root / 'source.zip') as archive:
+                self.assertEqual(b'#!/bin/sh\nexit 0\n', archive.read('gradlew'))
+
     def test_export_uses_committed_source_and_omits_private_and_generated_files(self):
         exporter = load('export_source')
         with tempfile.TemporaryDirectory() as directory:

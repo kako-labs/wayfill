@@ -33,7 +33,10 @@ def allowed_path(name):
 def export_source(root, output, revision='HEAD', *, working_tree=False):
     root, output = Path(root).resolve(), Path(output).resolve()
     # git archive preserves only the selected revision and honors export-ignore.
-    raw = subprocess.check_output(['git', 'archive', '--format=zip', revision], cwd=root)
+    # Host checkout settings must not turn POSIX scripts into CRLF in a portable ZIP.
+    # Explicit repository attributes (for example *.bat eol=crlf) still apply.
+    raw = subprocess.check_output(['git', '-c', 'core.autocrlf=false', '-c', 'core.eol=lf',
+                                   'archive', '--format=zip', revision], cwd=root)
     members = []
     with zipfile.ZipFile(io.BytesIO(raw)) as source:
         for entry in source.infolist():
