@@ -24,7 +24,7 @@ internal fun spriteFrame(name: String, elapsedMs: Long, calmLoop: Boolean = fals
 
 /** Actual drawn frames, no whole-image rotation or translation. Same atlas as the web preview. */
 @Composable internal fun PodongSprite(
-    name: String = "calm", modifier: Modifier = Modifier,
+    modifier: Modifier = Modifier, name: String = "calm",
     startedAtMs: Long? = null, durationMs: Long? = null, onDone: (() -> Unit)? = null,
 ) {
     val still = LocalPodongStill.current

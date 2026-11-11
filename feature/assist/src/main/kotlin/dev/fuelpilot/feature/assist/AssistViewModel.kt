@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
@@ -28,7 +29,13 @@ class AssistViewModel(
     val state = mutableState.asStateFlow()
 
     /** Collect once in the host. Effects are queued, never replayed to a new collector. */
-    val effects: Flow<AssistEffect> = outgoing.receiveAsFlow()
+    val effects: Flow<AssistEffect> = outgoing.receiveAsFlow().filter { effect ->
+        when (effect) {
+            is AssistEffect.AddWaypoint -> mutableState.value.pending?.let {
+                it.requestId == effect.requestId && it.stationId == effect.stationId
+            } == true
+        }
+    }
 
     init {
         (scope ?: viewModelScope).launch {

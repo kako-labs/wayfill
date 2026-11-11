@@ -66,7 +66,8 @@ fun reduceAssist(
             next = if (intent.value == Motion.Parked) state.copy(ui = state.ui.copy(motion = intent.value))
             else state.clearTransient().copy(
                 ui = state.clearTransient().ui.copy(motion = intent.value),
-                persisted = state.persisted.clearExposure(),
+                // A repeated initial Unknown is a snapshot, not a departure event.
+                persisted = if (state.ui.motion == intent.value) state.persisted else state.persisted.clearExposure(),
             )
         }
         is AssistIntent.PresentationChanged -> {
