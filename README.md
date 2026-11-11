@@ -28,8 +28,8 @@
 
 - `web/animation-lab.html`: 5개 동작·72프레임 애니메이션 비교
 - `web/index.html`: 설치 없이 실행하는 오프라인 인터랙티브 데모 11개 상황
-- `android/fuel-pilot-ui`: 상태 reducer와 원본 캐릭터 리소스를 포함한 Compose 라이브러리
-- `release-artifacts/fuel-pilot-ui-debug.aar`: 전달 시점의 Android UI 라이브러리
+- `feature/assist`: 상태 reducer와 원본 캐릭터 리소스를 포함한 통합 Compose 라이브러리
+- `feature/assist/build/outputs/aar/assist-debug.aar`: 검증 빌드에서 생성되는 Android UI 라이브러리
 - `reference/claude-export.html`: 사용자가 지정한 뽀동이 원본 모션과 디자인 자료
 
-UI 기준선 검증: `npm.cmd test`, `npm.cmd run verify`, `android/gradlew.bat -p android :fuel-pilot-ui:testDebugUnitTest :fuel-pilot-ui:assembleDebug --console=plain`.
+UI 기준선 검증: `npm.cmd test`, `npm.cmd run verify`, `.\\gradlew.bat :feature:assist:testDebugUnitTest :feature:assist:assembleDebug --no-daemon --max-workers=1 --console=plain`.

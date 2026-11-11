@@ -37,7 +37,7 @@ Android는 모션 시작 시간을 상태에 기록하고 현재 단조 시계 �
 
 ## 생성 AAR
 
-`release-artifacts/fuel-pilot-ui-debug.aar`
+`feature/assist/build/outputs/aar/assist-debug.aar`
 
 SHA-256: `3FF5844E93FBC6B20C06270B0BEDEEAE4484E19EA333079F0E9AA6B99D79538D`
 

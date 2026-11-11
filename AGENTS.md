@@ -23,4 +23,4 @@ Web and Android share the atlas, frame timings, and fixed per-clip viewport. Upd
 
 An imported UI build does not prove that the host application or an actual Pleos device has been integrated. Record host integration and device verification separately.
 
-UI checks: `npm.cmd test`, `npm.cmd run verify`; in an Android SDK/JDK environment, `android/gradlew.bat -p android :fuel-pilot-ui:testDebugUnitTest :fuel-pilot-ui:assembleDebug --console=plain`. Keep machine-specific `android/local.properties`, build caches, and generated temporary files out of Git.
+UI checks: `npm.cmd test`, `npm.cmd run verify`; in an Android SDK/JDK environment, `.\\gradlew.bat :feature:assist:testDebugUnitTest :feature:assist:assembleDebug --no-daemon --max-workers=1 --console=plain`. Keep machine-specific `local.properties`, build caches, and generated temporary files out of Git.

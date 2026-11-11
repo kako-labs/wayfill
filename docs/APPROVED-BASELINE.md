@@ -27,9 +27,9 @@
 | 전체 UI 기준 | `web/index.html`, `web/style.css`, `web/app.js`, `web/state.js` |
 | 모션 비교 | `web/animation-lab.html` (반복은 미리보기 전용) |
 | 웹 프레임/재생기 | `web/animation-data.js`, `web/podong-animation.js`, `web/assets/animation/` |
-| 네이티브 모듈 | `android/fuel-pilot-ui/` 전체 |
+| 네이티브 모듈 | `feature/assist/`의 `dev.fuelpilot.ui` 소스·리소스·테스트 |
 | 네이티브 모션 | `PodongAnimation.kt`, `PodongClips.kt`, `res/drawable-nodpi/podong_atlas.png` |
-| 빌드된 라이브러리 | `release-artifacts/fuel-pilot-ui-debug.aar` |
+| 빌드된 라이브러리 | 검증 시 생성되는 `feature/assist/build/outputs/aar/assist-debug.aar` |
 
 아틀라스·좌표·표시 영역·프레임 시간은 한 세트다. 예전 PNG 포즈 파일이나 `reference/claude-export.html`의 이전 문구/판정을 최신 기준으로 다시 적용하지 않는다. 폴더의 이전 자료는 참고·호환 보존용이다.
 

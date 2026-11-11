@@ -38,17 +38,17 @@ git switch -c integrate/podong-approved
 
 ## 3. Android Compose 앱에 적용
 
-`android/fuel-pilot-ui`는 Android 라이브러리 모듈입니다. 앱 화면, 캐릭터 PNG 리소스, 상태 reducer를 포함합니다. 기존 앱의 차량/내비 SDK와 직접 연결하는 부분은 콜백으로 남겼습니다.
+`feature/assist`는 승인 UI가 통합된 Android 라이브러리 모듈입니다. 앱 화면, 캐릭터 PNG 리소스, 상태 reducer를 포함합니다. 기존 앱의 차량/내비 SDK와 직접 연결하는 부분은 포트와 콜백 경계로 남겼습니다.
 
 모듈 복사 방식이 가장 단순합니다.
 
-1. 회사 앱의 새 작업 브랜치에서 `android/fuel-pilot-ui` 폴더를 프로젝트에 복사합니다.
+1. 회사 앱의 새 작업 브랜치에서 현재 저장소의 `feature/assist` 모듈을 기준으로 연결합니다.
 2. `settings.gradle.kts`에 `include(":fuel-pilot-ui")`를 추가합니다.
 3. 앱 모듈에 `implementation(project(":fuel-pilot-ui"))`를 추가합니다.
 4. 회사 앱이 version catalog로 플러그인 버전을 관리한다면 모듈의 `plugins` 선언을 기존 방식에 맞추세요. Kotlin Compose 플러그인이 필요합니다.
 5. [연결 계약](docs/ANDROID-INTEGRATION.md)의 예시처럼 `FuelPilotUi`를 배치하고 이벤트와 콜백을 연결합니다.
 
-원하는 경우 빌드된 `release-artifacts/fuel-pilot-ui-debug.aar`도 쓸 수 있습니다. AAR 단독으로는 Compose 의존성을 가져오지 않으므로 연결 문서의 의존성을 앱에 추가해야 합니다. 소스 모듈 복사를 권장합니다.
+필요하면 `:feature:assist:assembleDebug`로 `feature/assist/build/outputs/aar/assist-debug.aar`를 생성할 수 있습니다. AAR 단독으로는 Compose 의존성을 가져오지 않으므로 연결 문서의 의존성을 앱에 추가해야 합니다. 소스 모듈 연결을 권장합니다.
 
 ## 4. 두 세션에 각각 전달하기
 
@@ -56,7 +56,7 @@ UI 세션에는 [UI-SESSION-HANDOFF.md](docs/UI-SESSION-HANDOFF.md)의 첫 문�
 
 아래는 기존 앱 연결 계약의 짧은 요약입니다.
 
-> 이 저장소의 START-HERE.md와 docs/ANDROID-INTEGRATION.md, docs/PODONG-BEHAVIOR.md를 먼저 읽어줘. web/index.html은 상태별 기준 UI이고 android/fuel-pilot-ui는 빌드 확인된 Compose 라이브러리야. 기존 앱의 차량·주유소 추천·내비 경유지 로직을 보존하면서 UI만 연결해줘. FuelUiState의 motion은 실제 차량 상태를 반영하고 기본 Unknown을 유지해. 주유 완료는 검증된 이벤트 ID로 전달하고 seenIds와 설정을 ViewModel/저장소에 보존해 중복 인사를 막아줘. onRequestWaypoint는 요청일 뿐이므로 내비 SDK 성공 응답에서만 RouteAdded를 보내줘. 내비 지도 위 표시 권한을 확인하기 전에는 순정 지도 오버레이가 된다고 가정하지 말고 앱 내부 표면부터 연결해줘. 화면 수치는 예시이므로 하드코딩하지 마. 작업 후 앱 빌드와 주유 완료/중복 이벤트/출발 중단/데이터 미수신을 확인하고, 작업 브랜치와 인계 내용을 GitHub에 보존해줘.
+> 이 저장소의 START-HERE.md와 docs/ANDROID-INTEGRATION.md, docs/PODONG-BEHAVIOR.md를 먼저 읽어줘. web/index.html은 상태별 기준 UI이고 feature/assist는 빌드 확인된 Compose 라이브러리야. 기존 앱의 차량·주유소 추천·내비 경유지 로직을 보존하면서 UI만 연결해줘. FuelUiState의 motion은 실제 차량 상태를 반영하고 기본 Unknown을 유지해. 주유 완료는 검증된 이벤트 ID로 전달하고 seenIds와 설정을 ViewModel/저장소에 보존해 중복 인사를 막아줘. onRequestWaypoint는 요청일 뿐이므로 내비 SDK 성공 응답에서만 RouteAdded를 보내줘. 내비 지도 위 표시 권한을 확인하기 전에는 순정 지도 오버레이가 된다고 가정하지 말고 앱 내부 표면부터 연결해줘. 화면 수치는 예시이므로 하드코딩하지 마. 작업 후 앱 빌드와 주유 완료/중복 이벤트/출발 중단/데이터 미수신을 확인하고, 작업 브랜치와 인계 내용을 GitHub에 보존해줘.
 
 ## 확인 범위
 
