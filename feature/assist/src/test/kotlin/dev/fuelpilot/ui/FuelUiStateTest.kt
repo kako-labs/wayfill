@@ -53,4 +53,22 @@ class FuelUiStateTest {
         assertTrue(characterPresentation(moving).visible); assertFalse(characterPresentation(moving).playful)
         assertTrue(characterPresentation(FuelUiState(characterEnabled = false)).visible)
     }
+    @Test fun arrivingAtAStationDoesNotPretendFuelingCompleted() {
+        val arrived = parked().copy(screen = Screen.Added, routeStation = "station-a")
+        assertNull(arrived.refuel)
+        assertNull(arrived.celebration)
+        assertTrue(arrived.seenIds.isEmpty())
+    }
+    @Test fun verifiedRefuelCanCompleteAfterTheScreenWasNotKeptAlive() {
+        val resumed = parked().copy(screen = Screen.Widget, routeStation = "station-a")
+        val completed = reduceFuelUi(
+            resumed,
+            FuelUiEvent.RefuelConfirmed(RefuelEvent("verified-after-resume", liters = 18.5)),
+            nowMs = 4000,
+        )
+        assertEquals(Screen.Refuel, completed.screen)
+        assertEquals("verified-after-resume", completed.celebration?.id)
+        assertTrue("verified-after-resume" in completed.seenIds)
+        assertNull(completed.routeStation)
+    }
 }

@@ -1,6 +1,7 @@
 package dev.fuelpilot.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,12 +11,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
+import dev.fuelpilot.data.navigation.WaypointResult
+import dev.fuelpilot.feature.assist.AssistAvailability
 import dev.fuelpilot.feature.assist.AssistIntent
 import dev.fuelpilot.feature.assist.AssistViewState
 
@@ -26,6 +28,8 @@ private val White = Color(0xFFF7F2EA)
 private val Muted = Color(0xFFB9AE9D)
 private val Coral = Color(0xFFFF9A88)
 private val Line = Color(0xFF393329)
+private val Raised = Color(0xFF1D1A16)
+private val Inset = Color(0xFF211D17)
 
 /** Distances include the host's real station-access route, not straight-line distance. */
 data class FuelStation(val id: String, val name: String, val distanceKm: Double?, val extraMinutes: Int?, val remainingAtStationKm: Double? = null)
@@ -46,6 +50,57 @@ private fun shortfall(range: Double?, distance: Double?): Double? {
     return (d - r).takeIf { it > 0 }
 }
 
+internal enum class AdaptiveMode { Glanceable, Detailed }
+internal enum class AdaptiveStatus { Loading, Stale, Unsupported, Unavailable, Error, Pending, Success, Refuel, Recommendation, Monitoring }
+internal data class AdaptiveUiModel(
+    val mode: AdaptiveMode,
+    val status: AdaptiveStatus,
+    /** Non-null only when the host contract can accept this exact recommendation now. */
+    val actionableStationId: String?,
+    val actionableRecommendationKey: String?,
+)
+
+/** Pure UI policy used by both Compose and state-focused tests. */
+internal fun adaptiveUiModel(state: AssistViewState): AdaptiveUiModel {
+    val ui = state.ui
+    val detailed = ui.motion == Motion.Parked
+    val presentation = state.presentation
+    val stationId = presentation.route.recommended?.id?.takeIf { it.isNotBlank() }
+    val recommendationKey = presentation.recommendationKey?.takeIf { it.isNotBlank() }
+    val exposed = recommendationKey != null &&
+        (state.activeRecommendationKey == recommendationKey || recommendationKey !in state.persisted.exposedRecommendationKeys)
+    val recommendation = state.ready && presentation.availability == AssistAvailability.READY &&
+        presentation.targetScreen in setOf(Screen.Recommendation, Screen.Passing) &&
+        stationId != null && recommendationKey != null && exposed
+    val eligibleSurface = when (ui.motion) {
+        Motion.Parked -> ui.screen in setOf(Screen.Recommendation, Screen.Passing, Screen.Analysis)
+        Motion.Moving -> true
+        Motion.Unknown -> false
+    }
+    val actionable = stationId.takeIf {
+        eligibleSurface && recommendation && state.pending == null && ui.refuel == null && ui.celebration == null &&
+            state.navigationResult !is WaypointResult.Succeeded && ui.routeStation == null
+    }
+    val status = when {
+        !state.ready -> AdaptiveStatus.Loading
+        ui.error != null -> AdaptiveStatus.Error
+        ui.refuel != null -> AdaptiveStatus.Refuel
+        state.pending != null || ui.screen == Screen.Adding -> AdaptiveStatus.Pending
+        state.navigationResult is WaypointResult.Succeeded || ui.routeStation != null || ui.screen == Screen.Added -> AdaptiveStatus.Success
+        presentation.availability == AssistAvailability.STALE -> AdaptiveStatus.Stale
+        presentation.availability == AssistAvailability.UNSUPPORTED -> AdaptiveStatus.Unsupported
+        presentation.availability == AssistAvailability.UNAVAILABLE -> AdaptiveStatus.Unavailable
+        recommendation -> AdaptiveStatus.Recommendation
+        else -> AdaptiveStatus.Monitoring
+    }
+    return AdaptiveUiModel(
+        if (detailed) AdaptiveMode.Detailed else AdaptiveMode.Glanceable,
+        status,
+        actionable,
+        recommendationKey.takeIf { actionable != null },
+    )
+}
+
 /**
  * The host collects AssistViewModel effects and returns request-ID-tagged navigation results.
  * NoAction leaves only the host-provided surface. The assist UI never renders its own map.
@@ -57,108 +112,135 @@ fun FuelPilotUi(
     modifier: Modifier = Modifier,
     mapContent: @Composable BoxScope.() -> Unit = {},
 ) {
-    if (state.overlayVisible) {
-        FuelPilotUi(state.ui, state.presentation.route, onIntent, state.persisted.minimumReserveKm, modifier, mapContent)
+    if (state.assistVisible) {
+        FuelPilotContent(state, onIntent, modifier, mapContent)
     } else {
         Box(modifier.fillMaxSize(), content = mapContent)
     }
 }
 
 @Composable
-private fun FuelPilotUi(
-    state: FuelUiState,
-    route: FuelRouteUi,
+private fun FuelPilotContent(
+    viewState: AssistViewState,
     onIntent: (AssistIntent) -> Unit,
-    minimumReserveKm: Int,
     modifier: Modifier = Modifier,
     mapContent: @Composable BoxScope.() -> Unit = {},
 ) {
+    val state = viewState.ui
+    val route = viewState.presentation.route
+    val model = adaptiveUiModel(viewState)
     val onEvent = onIntent
     val parked = state.motion == Motion.Parked
     val playfulCharacter = characterPresentation(state).playful
     val station = route.recommended
     val select: (FuelStation) -> Unit = {
         if (state.pendingStation == null) {
-            onEvent(AssistIntent.SelectStation(it.id))
+            onEvent(AssistIntent.SelectStation(it.id, model.actionableRecommendationKey))
         }
     }
-    CompositionLocalProvider(LocalPodongStill provides (!state.characterEnabled || state.reduceMotion)) {
+    CompositionLocalProvider(LocalPodongStill provides (!parked || !state.characterEnabled || state.reduceMotion)) {
     MaterialTheme(colorScheme = darkColorScheme(primary = Gold, onPrimary = Color(0xFF241703), surface = Graphite, onSurface = White, background = Color(0xFF0C0B09))) {
         BoxWithConstraints(modifier.fillMaxSize()) {
             mapContent()
-            // Detailed screens are suppressed if speed/parking state is moving or unknown.
-            val screen = if (!parked) Screen.Widget else state.screen
-            if (screen == Screen.Analysis) {
-                Analysis(state, route, maxWidth < 840.dp, select, onEvent)
-            } else if (screen == Screen.Settings) {
-                Settings(state, onEvent, minimumReserveKm, true)
+            // Moving/unknown is a non-scrolling companion beside the native navigation surface.
+            if (model.mode == AdaptiveMode.Glanceable) {
+                GlanceableCompanion(state, route, model, maxWidth >= 900.dp, onEvent)
             } else {
+            val screen = state.screen
+            if (screen == Screen.Analysis) {
+                Analysis(state, route, maxWidth < 840.dp, model.actionableStationId, select, onEvent)
+            } else if (screen == Screen.Settings) {
+                Settings(state, onEvent, viewState.persisted.minimumReserveKm, true)
+            } else {
+                val wideParked = maxWidth >= 900.dp
                 Column(
-                    Modifier.align(Alignment.BottomStart).padding(24.dp)
-                        .widthIn(max = 540.dp).fillMaxWidth()
+                    Modifier.align(if (wideParked) Alignment.Center else Alignment.BottomStart).padding(if (maxWidth < 520.dp) 12.dp else 24.dp)
+                        .widthIn(max = if (wideParked) 1460.dp else 680.dp).fillMaxWidth()
                         .heightIn(max = (maxHeight - 48.dp).coerceAtLeast(1.dp)).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
                     when (screen) {
                         Screen.Recommendation -> {
-                            val reason = if (shortfall(route.rangeKm, route.destinationKm) != null) "목적지까지 가려면\n중간에 주유해야 해요" else "현재 경로의 주유 정보를\n확인해 주세요"
-                            PodongIntro(reason, calm = !playfulCharacter)
-                            Panel(showIdentity = false) {
-                                StationCopy(station)
-                                state.error?.let { Text(it, color = Coral, fontSize = 17.sp) }
-                                Actions(station, select, onEvent)
-                                TextButton(onClick = { onEvent(AssistIntent.Show(Screen.Analysis)) }) { Text("주유가 필요한 이유 보기 ›", color = Muted, fontSize = 18.sp) }
+                            val reason = if (shortfall(route.rangeKm, route.destinationKm) != null) "목적지까지 가려면 중간에 주유해야 해요" else "현재 경로의 주유 정보를 확인해 주세요"
+                            VehicleLayout(
+                                wide = wideParked,
+                                intro = { PodongIntro(reason, calm = !playfulCharacter) },
+                            ) {
+                                Panel(showIdentity = false, modifier = Modifier.testTag("parked_recommendation")) {
+                                    StatusRow("경로 분석 완료", "정차 중")
+                                    RouteMetrics(route.rangeKm, route.destinationKm)
+                                    StationCard(station)
+                                    state.error?.let { Text(it, color = Coral, fontSize = 21.sp, lineHeight = 29.sp) }
+                                    Actions(station, model.actionableStationId, select, onEvent)
+                                    TextButton(
+                                        onClick = { onEvent(AssistIntent.Show(Screen.Analysis)) },
+                                        modifier = Modifier.heightIn(min = 76.dp).testTag("parked_details"),
+                                    ) { Text("추천 근거 자세히 보기 ›", color = Muted, fontSize = 21.sp) }
+                                }
                             }
                         }
-                        Screen.Passing -> Panel {
-                            Text("지나치기 전에 확인하세요", color = Coral, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        Screen.Passing -> {
                             val reason = if (shortfall(route.rangeKm, route.nextAfterPassing?.distanceKm) != null) "이곳을 지나면 다음 주유소까지\n연료가 부족할 수 있어요" else "앞 주유소와 다음 주유 기회를\n확인해 주세요"
-                            Copy(reason, 27)
-                            HorizontalDivider(color = Line)
-                            StationCopy(station)
-                            Actions(station, select, onEvent)
-                            TextButton(onClick = { onEvent(AssistIntent.Show(Screen.Analysis)) }) { Text("다음 주유소까지 거리 보기 ›", color = Muted, fontSize = 18.sp) }
+                            VehicleLayout(wideParked, { PodongIntro(reason, calm = !playfulCharacter) }) {
+                                Panel(modifier = Modifier.testTag("parked_passing"), showIdentity = false) {
+                                    StatusRow("지나치기 전 확인", km(station?.distanceKm), alert = true)
+                                    Copy(reason, 30)
+                                    RouteMetrics(route.rangeKm, route.nextAfterPassing?.distanceKm)
+                                    StationCard(station)
+                                    Actions(station, model.actionableStationId, select, onEvent)
+                                    TextButton(
+                                        onClick = { onEvent(AssistIntent.Show(Screen.Analysis)) },
+                                        modifier = Modifier.heightIn(min = 76.dp).testTag("parked_details"),
+                                    ) { Text("다음 주유소까지 거리 보기 ›", color = Muted, fontSize = 21.sp) }
+                                }
+                            }
                         }
-                        Screen.Adding, Screen.Added -> Panel {
-                            Text(if (screen == Screen.Adding) "내비게이션에 전달했어요" else "✓ 내비게이션 경로가 바뀌었어요", color = GoldText, fontSize = 18.sp)
-                            Copy(if (screen == Screen.Adding) "경로 추가를 확인하고 있어요" else "주유소로 안내할게요", 28)
-                            Text(if (screen == Screen.Adding) "경로 재탐색 결과를 기다리고 있어요." else "내비게이션 경로를 따라가세요.", color = Muted, fontSize = 20.sp)
-                            Primary("지도 보기", enabled = screen == Screen.Added) { onEvent(AssistIntent.Continue) }
+                        Screen.Adding, Screen.Added -> VehicleLayout(
+                            wideParked,
+                            { PodongIntro(if (screen == Screen.Adding) "내비게이션 응답을 확인하고 있어요" else "주유소로 차분히 안내할게요", calm = true) },
+                        ) {
+                            Panel(modifier = Modifier.testTag(if (screen == Screen.Adding) "navigation_pending" else "navigation_success"), showIdentity = false) {
+                                Text(if (screen == Screen.Adding) "내비게이션에 전달했어요" else "✓ 내비게이션 경로가 바뀌었어요", color = GoldText, fontSize = 21.sp)
+                                Copy(if (screen == Screen.Adding) "경로 추가를 확인하고 있어요" else "주유소로 안내할게요", 32)
+                                Text(if (screen == Screen.Adding) "경로 재탐색 결과를 기다리고 있어요." else "도착하면 P에 놓고 시동을 끈 뒤 주유하세요. 화면을 닫아도 차량이 확인한 주유 완료 이벤트는 다음 실행에서 이어서 보여줘요.", color = Muted, fontSize = 22.sp, lineHeight = 31.sp)
+                                if (screen == Screen.Adding) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Gold, trackColor = Line)
+                                Primary("내비게이션으로 돌아가기", enabled = screen == Screen.Added) { onEvent(AssistIntent.Continue) }
+                            }
                         }
                         Screen.Refuel -> {
                             val active = state.celebration?.takeIf { playfulCharacter }
-                            if (active != null) CelebrationHeader(active, state.reduceMotion, onEvent)
-                            else PodongIntro(when (state.refuel?.let(::refuelVariant)) { Variant.Small -> "냠, 간식!"; Variant.Full -> "빵빵해요!"; Variant.Recovery -> "살았다…!"; else -> "든든하게 채웠어요" }, calm = !playfulCharacter, clip = "calm")
-                            Panel(showIdentity = false) {
-                                Text("✓ 주유 완료", color = GoldText, fontSize = 19.sp)
-                                Copy("연료를 채웠어요", 32)
-                                val range = valid(state.refuel?.rangeKm)
-                                if (range != null) { Text("${number(range)} km", color = GoldText, fontSize = 54.sp, fontWeight = FontWeight.Bold); Text("지금 연료로 갈 수 있는 예상 거리예요.", color = Muted, fontSize = 20.sp) }
-                                else Text("차량의 주행 가능 거리를 확인 중이에요.", color = Muted, fontSize = 20.sp)
-                                valid(state.refuel?.liters)?.takeIf { it > 0 }?.let { Text("오늘은 ${number(it)}L 먹었어요!", color = White, fontSize = 21.sp) }
-                                Primary("지도 보기") { onEvent(AssistIntent.Continue) }
+                            VehicleLayout(
+                                wideParked,
+                                intro = {
+                                    if (active != null) CelebrationHeader(active, onEvent)
+                                    else PodongIntro(when (state.refuel?.let(::refuelVariant)) { Variant.Small -> "냠, 간식!"; Variant.Full -> "빵빵해요!"; Variant.Recovery -> "살았다…!"; else -> "든든하게 채웠어요" }, calm = !playfulCharacter, clip = "calm")
+                                },
+                            ) {
+                                Panel(showIdentity = false, modifier = Modifier.testTag("refuel_success")) {
+                                    Text("✓ 차량에서 주유 완료 확인", color = GoldText, fontSize = 21.sp)
+                                    Copy("다시 출발할 준비가 됐어요", 34)
+                                    val range = valid(state.refuel?.rangeKm)
+                                    if (range != null) { Text("${number(range)} km", color = GoldText, fontSize = 58.sp, fontWeight = FontWeight.Bold); Text("지금 연료로 갈 수 있는 예상 거리예요.", color = Muted, fontSize = 22.sp) }
+                                    else Text("차량의 주행 가능 거리를 확인 중이에요.", color = Muted, fontSize = 22.sp)
+                                    valid(state.refuel?.liters)?.takeIf { it > 0 }?.let { Text("오늘은 ${number(it)}L 먹었어요!", color = White, fontSize = 24.sp) }
+                                    Text("주유 중 화면을 켜 둘 필요는 없어요. 이 인사는 확인된 주유 완료 이벤트 뒤에만 한 번 보여요.", color = Muted, fontSize = 20.sp, lineHeight = 29.sp)
+                                    Primary("내비게이션으로 돌아가기") { onEvent(AssistIntent.Continue) }
+                                }
                             }
                         }
-                        Screen.LongDrive -> {
-                            PodongIntro("여행 준비 완료!", calm = !playfulCharacter)
-                            Panel(showIdentity = false) {
+                        Screen.LongDrive -> VehicleLayout(wideParked, { PodongIntro("여행 준비 완료!", calm = !playfulCharacter) }) {
+                            Panel(showIdentity = false, modifier = Modifier.testTag("long_drive_status")) {
                                 val enough = valid(route.rangeKm)?.let { r -> valid(route.destinationKm)?.let { d -> r >= d } } == true
-                                Copy(if (enough) "이번 경로는 주유 없이\n갈 수 있을 것으로 예상돼요" else "출발 전 연료와 경로를\n확인해 주세요", 28)
-                                Text("주행 가능 ${km(route.rangeKm)} · 목적지 ${km(route.destinationKm)}", color = Muted, fontSize = 20.sp)
-                                Primary("지도 보기") { onEvent(AssistIntent.Continue) }
+                                StatusRow("경로 분석 완료", "출발 전")
+                                Copy(if (enough) "이번 경로는 주유 없이 갈 수 있을 것으로 예상돼요" else "출발 전 연료와 경로를 확인해 주세요", 32)
+                                RouteMetrics(route.rangeKm, route.destinationKm)
+                                Primary("내비게이션으로 돌아가기") { onEvent(AssistIntent.Continue) }
                             }
                         }
-                        else -> Panel {
-                            Text("FUEL PILOT", color = GoldText, fontSize = 17.sp)
-                            val text = state.statusMessage ?: when { state.refuel != null -> "연료를 채웠어요"; state.routeStation != null -> "경유 주유소로 안내 중이에요"; station != null -> "다음 주유소 · ${station.name}"; else -> "주유 정보를 확인 중이에요" }
-                            Copy(text, 25)
-                            Text(if (state.refuel != null) "주행 가능 거리 ${km(state.refuel.rangeKm)}" else station?.let { "${km(it.distanceKm)} 앞" } ?: "차량과 경로 정보를 기다려요.", color = Muted, fontSize = 19.sp)
-                            if (parked && state.detailsAvailable) {
-                                TextButton(onClick = { onEvent(AssistIntent.Show(Screen.Analysis)) }) { Text("자세히 보기 ›", color = GoldText, fontSize = 18.sp) }
-                            }
-                        }
+                        else -> ParkedDashboard(state, route, model, wideParked, onEvent)
                     }
                 }
+            }
             }
         }
     }
@@ -166,26 +248,274 @@ private fun FuelPilotUi(
 
 }
 
-@Composable private fun Panel(showIdentity: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
-    Surface(color = Graphite, shape = RoundedCornerShape(24.dp)) {
-        Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+@Composable private fun VehicleLayout(
+    wide: Boolean,
+    intro: @Composable () -> Unit,
+    body: @Composable () -> Unit,
+) {
+    if (wide) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(0.78f)) { intro() }
+            Box(Modifier.weight(1.22f)) { body() }
+        }
+    } else {
+        Column(Modifier.fillMaxWidth()) { intro(); body() }
+    }
+}
+
+@Composable private fun Panel(modifier: Modifier = Modifier, showIdentity: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        modifier = modifier,
+        color = Raised,
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, Color(0xFF4A4032)),
+        tonalElevation = 2.dp,
+        shadowElevation = 12.dp,
+    ) {
+        Column(Modifier.padding(30.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             if (showIdentity) MessageIdentity()
             content()
         }
     }
 }
+
+@Composable private fun BoxScope.GlanceableCompanion(
+    state: FuelUiState,
+    route: FuelRouteUi,
+    model: AdaptiveUiModel,
+    wide: Boolean,
+    onEvent: (AssistIntent) -> Unit,
+) {
+    val station = route.recommended
+    val actionableStationId = model.actionableStationId
+    val actionableRecommendationKey = model.actionableRecommendationKey
+    val title = when (model.status) {
+        AdaptiveStatus.Loading -> "주유 안내를 준비하고 있어요"
+        AdaptiveStatus.Stale -> "최신 정보를 다시 확인 중이에요"
+        AdaptiveStatus.Unsupported -> "현재 환경에서는 주유 안내를 지원하지 않아요"
+        AdaptiveStatus.Unavailable -> "차량과 경로 정보를 확인할 수 없어요"
+        AdaptiveStatus.Error -> state.error ?: "요청을 완료하지 못했어요"
+        AdaptiveStatus.Pending -> "내비게이션 응답을 기다리고 있어요"
+        AdaptiveStatus.Success -> "주유소 경로가 준비됐어요"
+        AdaptiveStatus.Refuel -> "주유 완료를 확인했어요"
+        AdaptiveStatus.Recommendation -> station?.let { "다음 주유소 · ${it.name}" } ?: "주유가 필요할 수 있어요"
+        AdaptiveStatus.Monitoring -> state.statusMessage ?: "연료와 경로를 살피고 있어요"
+    }
+    val detail = when {
+        state.motion == Motion.Unknown -> "차량 상태를 확인할 때까지 상세 기능과 큰 동작을 멈춰요."
+        model.status == AdaptiveStatus.Recommendation && station != null -> buildString {
+            append("${km(station.distanceKm)} 앞")
+            route.recommendationReason?.takeIf { it.isNotBlank() }?.let { append(" · $it") }
+        }
+        model.status == AdaptiveStatus.Success -> "내비게이션에서 주유소 안내를 시작했어요."
+        route.rangeKm != null -> "주행 가능 ${km(route.rangeKm)} · 내비게이션은 그대로 유지돼요."
+        else -> "운전 중에는 필요한 정보만 간단히 보여줘요."
+    }
+    Surface(
+        modifier = Modifier.align(Alignment.BottomStart)
+            .padding(if (wide) 28.dp else 12.dp)
+            .widthIn(max = if (wide) 860.dp else 620.dp).fillMaxWidth()
+            .testTag(if (state.motion == Motion.Moving) "moving_companion" else "unknown_companion"),
+        color = Color(0xF2171512),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, Color(0xFF4A4032)),
+        shadowElevation = 12.dp,
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = if (wide) 28.dp else 20.dp, vertical = if (wide) 22.dp else 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (wide) 22.dp else 16.dp),
+        ) {
+            // Moving/unknown always uses the first calm frame: no automatic animation or scroll.
+            PodongSprite(Modifier.size(if (wide) 104.dp else 76.dp).testTag("podong_calm"), name = "calm")
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text(
+                    if (state.motion == Motion.Moving) "주행 중" else "차량 상태 확인 중",
+                    color = GoldText,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(title, color = White, fontSize = if (wide) 30.sp else 24.sp, lineHeight = if (wide) 38.sp else 31.sp, fontWeight = FontWeight.Bold)
+                Text(detail, color = Muted, fontSize = if (wide) 22.sp else 20.sp, lineHeight = if (wide) 30.sp else 28.sp, maxLines = 2)
+                if (state.motion == Motion.Moving && actionableStationId != null && actionableRecommendationKey != null) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 10.dp).testTag("moving_recommendation_actions"),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Button(
+                            onClick = {
+                                onEvent(AssistIntent.SelectStation(actionableStationId, actionableRecommendationKey))
+                            },
+                            modifier = Modifier.weight(1f).heightIn(min = 76.dp).testTag("guide_now"),
+                            shape = RoundedCornerShape(16.dp),
+                        ) { Text("바로 안내", fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+                        OutlinedButton(
+                            onClick = { onEvent(AssistIntent.Continue) },
+                            modifier = Modifier.weight(1f).heightIn(min = 76.dp).testTag("later"),
+                            shape = RoundedCornerShape(16.dp),
+                        ) { Text("나중에", color = White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold) }
+                    }
+                }
+            }
+            if (model.status == AdaptiveStatus.Loading) {
+                CircularProgressIndicator(Modifier.size(28.dp), color = Gold, strokeWidth = 3.dp)
+            }
+        }
+    }
+}
+
+@Composable private fun ParkedDashboard(
+    state: FuelUiState,
+    route: FuelRouteUi,
+    model: AdaptiveUiModel,
+    wide: Boolean,
+    onEvent: (AssistIntent) -> Unit,
+) {
+    val station = route.recommended
+    val intro = when (model.status) {
+        AdaptiveStatus.Loading, AdaptiveStatus.Stale -> "잠시만요, 확인하고 있어요"
+        AdaptiveStatus.Unsupported -> "여기서는 안내가 어려워요"
+        AdaptiveStatus.Unavailable -> "차량 정보를 확인해 주세요"
+        AdaptiveStatus.Error -> "다시 한번 확인해 볼까요?"
+        AdaptiveStatus.Success -> "안내 준비가 끝났어요"
+        AdaptiveStatus.Refuel -> "주유 완료를 확인했어요"
+        else -> "정차 중에 자세히 볼 수 있어요"
+    }
+    VehicleLayout(wide, { PodongIntro(intro, calm = !characterPresentation(state).playful) }) {
+        Panel(showIdentity = false, modifier = Modifier.testTag("state_${model.status.name.lowercase(Locale.ROOT)}")) {
+            StatusRow(
+                label = when (model.status) {
+                    AdaptiveStatus.Loading -> "불러오는 중"
+                    AdaptiveStatus.Stale -> "최신 정보 확인 중"
+                    AdaptiveStatus.Unsupported -> "지원되지 않음"
+                    AdaptiveStatus.Unavailable -> "정보 없음"
+                    AdaptiveStatus.Error -> "확인 필요"
+                    AdaptiveStatus.Success -> "안내 준비 완료"
+                    AdaptiveStatus.Refuel -> "주유 확인 완료"
+                    else -> "정차 모드"
+                },
+                state = "P · 상세 기능 사용 가능",
+                alert = model.status in setOf(AdaptiveStatus.Error, AdaptiveStatus.Unsupported, AdaptiveStatus.Unavailable),
+            )
+            state.statusMessage?.let { Text(it, color = if (model.status == AdaptiveStatus.Unsupported) Coral else White, fontSize = 24.sp, lineHeight = 33.sp) }
+            state.error?.let { Text(it, color = Coral, fontSize = 22.sp, lineHeight = 31.sp) }
+            if (model.status in setOf(AdaptiveStatus.Loading, AdaptiveStatus.Stale)) {
+                LinearProgressIndicator(Modifier.fillMaxWidth(), color = Gold, trackColor = Line)
+            }
+            if (model.status == AdaptiveStatus.Unsupported) {
+                Text("지원 SDK 또는 권한이 준비되기 전에는 실제 안내를 시작하지 않아요. 임의의 거리나 주유소를 표시하지 않습니다.", color = Muted, fontSize = 20.sp, lineHeight = 29.sp)
+            }
+            if (station != null && model.status == AdaptiveStatus.Recommendation) {
+                StationCard(station)
+                route.recommendationReason?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, color = Muted, fontSize = 21.sp, lineHeight = 30.sp)
+                }
+                Actions(station, model.actionableStationId, {
+                    onEvent(AssistIntent.SelectStation(it.id, model.actionableRecommendationKey))
+                }, onEvent)
+            }
+            HistorySummary(state.seenIds.size)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (state.detailsAvailable) {
+                    OutlinedButton(
+                        onClick = { onEvent(AssistIntent.Show(Screen.Analysis)) },
+                        modifier = Modifier.weight(1f).heightIn(min = 76.dp).testTag("parked_details"),
+                        shape = RoundedCornerShape(16.dp),
+                    ) { Text("추천 근거", fontSize = 21.sp) }
+                }
+                OutlinedButton(
+                    onClick = { onEvent(AssistIntent.Show(Screen.Settings)) },
+                    modifier = Modifier.weight(1f).heightIn(min = 76.dp).testTag("parked_settings"),
+                    shape = RoundedCornerShape(16.dp),
+                ) { Text("설정", fontSize = 21.sp) }
+            }
+        }
+    }
+}
+
+@Composable private fun HistorySummary(verifiedCount: Int) {
+    Surface(color = Color(0xFF100F0D), shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, Line)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("확인된 주유 기록", color = White, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
+                Text("차량이 검증한 완료 이벤트만 기록해요.", color = Muted, fontSize = 17.sp, lineHeight = 24.sp)
+            }
+            Text("${verifiedCount}건", color = GoldText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
 @Composable private fun Copy(text: String, size: Int) { Text(text, color = White, fontSize = size.sp, lineHeight = (size * 1.4).sp, fontWeight = FontWeight.Bold) }
+@Composable private fun StatusRow(label: String, state: String, alert: Boolean = false) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(color = if (alert) Coral else Gold, shape = RoundedCornerShape(99.dp), modifier = Modifier.size(8.dp)) {}
+            Text(label, color = if (alert) Coral else GoldText, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+        Surface(color = Color(0xFF242019), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, Line)) {
+            Text(state, Modifier.padding(horizontal = 12.dp, vertical = 7.dp), color = Muted, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+@Composable private fun RouteMetrics(range: Double?, destination: Double?) {
+    val shortage = shortfall(range, destination)
+    Surface(color = Color(0xFF100F0D), shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, Line)) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val remaining = shortage?.let(::km) ?: run {
+                val r = valid(range); val d = valid(destination)
+                if (r != null && d != null) km((r - d).coerceAtLeast(0.0)) else "확인 중"
+            }
+            if (maxWidth < 420.dp) {
+                Column(Modifier.fillMaxWidth()) {
+                    Metric("주행 가능", km(range), Modifier.fillMaxWidth())
+                    HorizontalDivider(color = Line)
+                    Metric("목적지", km(destination), Modifier.fillMaxWidth())
+                    HorizontalDivider(color = Line)
+                    Metric(if (shortage != null) "부족 거리" else "남는 거리", remaining, Modifier.fillMaxWidth(), shortage != null)
+                }
+            } else Row(Modifier.fillMaxWidth()) {
+                Metric("주행 가능", km(range), Modifier.weight(1f))
+                Metric("목적지", km(destination), Modifier.weight(1f))
+                Metric(if (shortage != null) "부족 거리" else "남는 거리", remaining, Modifier.weight(1f), shortage != null)
+            }
+        }
+    }
+}
+@Composable private fun Metric(label: String, value: String, modifier: Modifier, risk: Boolean = false) {
+    Column(modifier.padding(horizontal = 12.dp, vertical = 13.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(label, color = Color(0xFF9E9384), fontSize = 16.sp)
+        Text(value, color = if (risk) Coral else White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+    }
+}
+@Composable private fun StationCard(station: FuelStation?) {
+    Surface(color = Inset, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFF40382D))) {
+        Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text("추천 주유소 · 경로 기준", color = GoldText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            StationCopy(station)
+        }
+    }
+}
 @Composable private fun Primary(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     Button(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF241703))) { Text(text, fontSize = 23.sp, fontWeight = FontWeight.Bold) }
 }
 @Composable private fun StationCopy(station: FuelStation?) {
-    Copy(station?.name ?: "주유소 정보를 확인 중이에요", 30)
-    if (station != null) Text(buildString { append("${km(station.distanceKm)} 앞"); station.extraMinutes?.takeIf { it >= 0 }?.let { append(" · 경로에서 ${it}분 추가") } }, color = Muted, fontSize = 21.sp)
+    Copy(station?.name ?: "주유소 정보를 확인 중이에요", 32)
+    if (station != null) Text(buildString { append("${km(station.distanceKm)} 앞"); station.extraMinutes?.takeIf { it >= 0 }?.let { append(" · 경로에서 ${it}분 추가") } }, color = Muted, fontSize = 23.sp, lineHeight = 31.sp)
 }
-@Composable private fun Actions(station: FuelStation?, select: (FuelStation) -> Unit, onEvent: (AssistIntent) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Button(onClick = { station?.let(select) }, enabled = station != null, modifier = Modifier.weight(1.65f).heightIn(min = 88.dp), shape = RoundedCornerShape(16.dp)) { Text("여기서 주유하기", fontSize = 22.sp, fontWeight = FontWeight.Bold) }
-        Button(onClick = { onEvent(AssistIntent.Continue) }, modifier = Modifier.weight(1f).heightIn(min = 88.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2620), contentColor = White)) { Text("계속 가기", fontSize = 21.sp) }
+@Composable private fun Actions(station: FuelStation?, actionableStationId: String?, select: (FuelStation) -> Unit, onEvent: (AssistIntent) -> Unit) {
+    val actionable = station?.takeIf { it.id == actionableStationId }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth < 440.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = { actionable?.let(select) }, enabled = actionable != null, modifier = Modifier.fillMaxWidth().heightIn(min = 76.dp).testTag("parked_guide_now"), shape = RoundedCornerShape(16.dp)) { Text("여기서 주유하기", fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+                Button(onClick = { onEvent(AssistIntent.Continue) }, modifier = Modifier.fillMaxWidth().heightIn(min = 76.dp).testTag("parked_later"), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2620), contentColor = White)) { Text("계속 가기", fontSize = 21.sp) }
+            }
+        } else Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = { actionable?.let(select) }, enabled = actionable != null, modifier = Modifier.weight(1.65f).heightIn(min = 88.dp).testTag("parked_guide_now"), shape = RoundedCornerShape(16.dp)) { Text("여기서 주유하기", fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+            Button(onClick = { onEvent(AssistIntent.Continue) }, modifier = Modifier.weight(1f).heightIn(min = 88.dp).testTag("parked_later"), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2620), contentColor = White)) { Text("계속 가기", fontSize = 21.sp) }
+        }
     }
 }
 @Composable private fun MessageIdentity() {
@@ -195,12 +525,21 @@ private fun FuelPilotUi(
     }
 }
 @Composable private fun PodongIntro(text: String, calm: Boolean = false, clip: String = "recommend") {
-    Row(Modifier.fillMaxWidth().heightIn(min = if (calm) 100.dp else 145.dp), verticalAlignment = Alignment.Bottom) {
-        Surface(Modifier.weight(1f).padding(bottom = 20.dp), color = Color(0xFFFFF4DF), shape = RoundedCornerShape(20.dp)) { Text(text, Modifier.padding(18.dp), color = Color(0xFF2E1E06), fontSize = 23.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold) }
-        PodongSprite(Modifier.width(if (calm) 80.dp else 190.dp).height(if (calm) 76.dp else 190.dp), name = if (calm) "calm" else clip)
+    BoxWithConstraints(Modifier.fillMaxWidth().testTag("podong_message")) {
+        val characterSize = when {
+            calm -> 96.dp
+            maxWidth < 420.dp -> 132.dp
+            else -> 190.dp
+        }
+        Row(Modifier.fillMaxWidth().heightIn(min = if (calm) 112.dp else 150.dp), verticalAlignment = Alignment.Bottom) {
+            Surface(Modifier.weight(1f).padding(bottom = 20.dp), color = Color(0xFFFFF4DF), shape = RoundedCornerShape(20.dp)) {
+                Text(text, Modifier.padding(20.dp), color = Color(0xFF2E1E06), fontSize = 27.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold)
+            }
+            PodongSprite(Modifier.size(characterSize), name = if (calm) "calm" else clip)
+        }
     }
 }
-@Composable private fun CelebrationHeader(celebration: Celebration, reduceMotion: Boolean, onEvent: (AssistIntent) -> Unit) {
+@Composable private fun CelebrationHeader(celebration: Celebration, onEvent: (AssistIntent) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
         val message = when (celebration.variant) { Variant.Small -> "냠, 간식!"; Variant.Full -> "빵빵해요!"; Variant.Recovery -> "살았다…!"; else -> "든든하게 채웠어요" }
         Surface(Modifier.weight(1f).padding(bottom = 20.dp), shape = RoundedCornerShape(18.dp), color = Color(0xFFFFF4DF)) { Text(message, Modifier.padding(18.dp), color = Color(0xFF2E1E06), fontSize = 23.sp, fontWeight = FontWeight.Bold) }
@@ -209,7 +548,7 @@ private fun FuelPilotUi(
         }
     }
 }
-@Composable private fun Analysis(state: FuelUiState, route: FuelRouteUi, narrow: Boolean, select: (FuelStation) -> Unit, onEvent: (AssistIntent) -> Unit) {
+@Composable private fun Analysis(state: FuelUiState, route: FuelRouteUi, narrow: Boolean, actionableStationId: String?, select: (FuelStation) -> Unit, onEvent: (AssistIntent) -> Unit) {
     Column(Modifier.fillMaxSize().background(Color(0xFF100F0D)).verticalScroll(rememberScrollState())) {
         ScreenHeader(if (state.refuel != null) "주유 후 연료 확인" else "주유가 필요한 이유", onEvent)
         if (state.refuel != null) {
@@ -242,42 +581,89 @@ private fun FuelPilotUi(
                         valid(s.remainingAtStationKm)?.let { Text("이 주유소에 도착하면 약 ${number(it)}km를 더 갈 수 있어요.", color = Muted, fontSize = 18.sp) }
                         shortfall(route.rangeKm, s.distanceKm)?.let { Text("도달하기까지 약 ${number(it)}km 부족해요.", color = Coral, fontSize = 18.sp) }
                     }
-                    route.recommended?.let { Primary("${it.name}에서 주유하기") { select(it) } }
+                    route.recommended?.takeIf { it.id == actionableStationId }?.let { Primary("${it.name}에서 주유하기") { select(it) } }
                 }
             }
             if (narrow) { reason(); stations() } else Row { Box(Modifier.weight(1f)) { reason() }; Box(Modifier.weight(1f).background(Graphite)) { stations() } }
         }
     }
 }
-@Composable private fun ScreenHeader(title: String, onEvent: (AssistIntent) -> Unit, backLabel: String = "지도 보기 ›") {
+@Composable private fun ScreenHeader(title: String, onEvent: (AssistIntent) -> Unit, backLabel: String = "안내로 돌아가기 ›") {
     Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PodongSprite(modifier = Modifier.width(48.dp).height(44.dp))
             Text(title, color = White, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
         }
-        TextButton(onClick = { onEvent(AssistIntent.Continue) }) { Text(backLabel, color = GoldText, fontSize = 19.sp) }
+        TextButton(onClick = { onEvent(AssistIntent.Continue) }, modifier = Modifier.heightIn(min = 76.dp)) { Text(backLabel, color = GoldText, fontSize = 21.sp) }
     }
     HorizontalDivider(color = Line)
 }
 @Composable private fun Settings(state: FuelUiState, onEvent: (AssistIntent) -> Unit, reserve: Int, editable: Boolean) {
-    Column(Modifier.fillMaxSize().background(Graphite).verticalScroll(rememberScrollState())) {
+    Column(Modifier.fillMaxSize().background(Color(0xFF100F0D)).verticalScroll(rememberScrollState()).testTag("settings_screen")) {
         ScreenHeader("주유 안내 설정", onEvent, "홈으로 ›")
-        Column(Modifier.padding(horizontal = 32.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Copy("주유 판단 여유거리", 25)
-            Text("${reserve}km", color = GoldText, fontSize = 40.sp, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Button(onClick = { onEvent(AssistIntent.ReserveChanged(reserve - 10)) }, enabled = editable && reserve > 20, modifier = Modifier.heightIn(min = 76.dp)) { Text("−10km", fontSize = 24.sp) }
-                Button(onClick = { onEvent(AssistIntent.ReserveChanged(reserve + 10)) }, enabled = editable && reserve < 100, modifier = Modifier.heightIn(min = 76.dp)) { Text("+10km", fontSize = 24.sp) }
+        Column(Modifier.widthIn(max = 920.dp).fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SettingsCard(featured = true) {
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    if (maxWidth < 520.dp) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("01", color = Color(0xFF827560), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Copy("주유 판단 여유거리", 25)
+                        Text("${reserve}km", color = GoldText, fontSize = 40.sp, fontWeight = FontWeight.Bold)
+                        Text("목적지 도착 뒤 남겨둘 연료 여유를 설정해요.", color = Muted, fontSize = 18.sp)
+                    } else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Text("01", color = Color(0xFF827560), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Copy("주유 판단 여유거리", 25)
+                            Text("목적지 도착 뒤 남겨둘 연료 여유를 설정해요.", color = Muted, fontSize = 18.sp)
+                        }
+                        Text("${reserve}km", color = GoldText, fontSize = 40.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Button(onClick = { onEvent(AssistIntent.ReserveChanged(reserve - 10)) }, enabled = editable && reserve > 20, modifier = Modifier.weight(1f).heightIn(min = 76.dp)) { Text("−10km", fontSize = 22.sp) }
+                    Button(onClick = { onEvent(AssistIntent.ReserveChanged(reserve + 10)) }, enabled = editable && reserve < 100, modifier = Modifier.weight(1f).heightIn(min = 76.dp)) { Text("+10km", fontSize = 22.sp) }
+                }
+                Text("20~100km · 10km 단위", color = Color(0xFF8F8577), fontSize = 15.sp)
+                Text("주유 시점을 판단하는 추정 거리 기준이며 안전을 보장하는 수치는 아니에요.", color = Muted, fontSize = 17.sp)
+                if (!editable) Text("차량의 정차 상태를 확인한 뒤 변경할 수 있어요.", color = Coral, fontSize = 18.sp)
             }
-            Text("20~100km 중에서 정해요. 주유 시점을 판단하는 추정 거리 기준이며 안전을 보장하는 수치는 아니에요.", color = Muted, fontSize = 20.sp)
-            if (!editable) Text("차량의 정차 상태를 확인한 뒤 변경할 수 있어요.", color = Coral, fontSize = 20.sp)
+            SettingsCard {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("02", color = Color(0xFF827560), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Copy("정차 중 귀여운 움직임", 25)
+                        Text("정차·주유 후에는 짧게 반응해요.\n꺼도 뽀동이는 메시지 곁에 계속 보여요.", color = Muted, fontSize = 18.sp)
+                    }
+                    Box(
+                        modifier = Modifier.sizeIn(minWidth = 76.dp, minHeight = 76.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Switch(checked = state.characterEnabled, enabled = editable, onCheckedChange = { onEvent(AssistIntent.CharacterChanged(it)) })
+                    }
+                }
+            }
+            SettingsCard {
+                Text("03", color = Color(0xFF827560), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Copy("주행 중에는 차분하게", 23)
+                Text("출발 즉시 큰 동작을 멈추고 작은 뽀동이로 바뀌어요.", color = Muted, fontSize = 18.sp)
+                HorizontalDivider(color = Line)
+                Text("04", color = Color(0xFF827560), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Copy("소리 없는 안내", 23)
+                Text("모든 캐릭터 모션은 무음으로 재생돼요.", color = Muted, fontSize = 18.sp)
+            }
+            HistorySummary(state.seenIds.size)
+            Text("설정은 정차 중에만 바꿀 수 있어요.", color = Color(0xFF8F8577), fontSize = 15.sp)
         }
-        Row(Modifier.fillMaxWidth().padding(32.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) { Copy("정차 중 귀여운 움직임", 25); Text("정차·주유 후에는 짧게 반응해요.\n꺼도 뽀동이는 메시지 곁에 계속 보여요.", color = Muted, fontSize = 20.sp) }
-            Switch(checked = state.characterEnabled, enabled = editable, onCheckedChange = { onEvent(AssistIntent.CharacterChanged(it)) })
-        }
-        HorizontalDivider(color = Line)
-        Text("주행 중에는 작은 뽀동이가 차분하게 함께해요.\n주유 후 인사가 끝나도 메시지가 보이는 동안 곁에 남아요.", Modifier.padding(32.dp), color = Muted, fontSize = 21.sp, lineHeight = 32.sp)
+    }
+}
+
+@Composable private fun SettingsCard(featured: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        color = if (featured) Color(0xFF211B12) else Raised,
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, if (featured) Color(0xFF5D492B) else Line),
+        shadowElevation = 6.dp,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(26.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
     }
 }
 

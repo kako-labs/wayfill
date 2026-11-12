@@ -66,8 +66,10 @@ class NativeDemoTest {
         compose.onNodeWithTag("demo_moving").performScrollTo().performClick()
         waitForState { compose.activity.runtime.state.value.ui.motion == Motion.Moving }
         assertNull(compose.activity.runtime.state.value.ui.celebration)
-        compose.onNodeWithTag("nav_settings").performClick()
-        compose.onNodeWithText("+10km").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("nav_settings").assertDoesNotExist()
+        compose.runOnIdle { compose.activity.runtime.dispatch(AssistIntent.ReserveChanged(60)) }
+        compose.waitForIdle()
+        assertEquals(50, compose.activity.runtime.state.value.persisted.minimumReserveKm)
         compose.onNodeWithTag("demo_parked").performScrollTo().performClick()
         waitForState { compose.activity.runtime.state.value.ui.motion == Motion.Parked }
         compose.onNodeWithTag("demo_duplicate").performScrollTo().performClick()

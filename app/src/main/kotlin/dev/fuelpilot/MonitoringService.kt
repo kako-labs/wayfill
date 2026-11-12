@@ -73,10 +73,8 @@ class MonitoringService : Service() {
                     val advice = if (app.uiVisible) null else backgroundAdvice(state)
                     if (advice == null) manager.cancel(ADVICE_ID)
                     advice?.let { current ->
-                        if (app.monitoring.claimAdvice(current.key)) {
-                            manager.notify(ADVICE_ID, base(ADVICE_CHANNEL).setContentTitle("뽀동이 주유 안내")
-                                .setContentText(current.message).setStyle(NotificationCompat.BigTextStyle().bigText(current.message))
-                                .setAutoCancel(true).build())
+                        if (!app.uiVisible && app.monitoring.claimAdvice(current.key) && !app.uiVisible) {
+                            manager.notify(ADVICE_ID, recommendation(current))
                         }
                     }
                 } catch (_: SecurityException) {
@@ -105,6 +103,20 @@ class MonitoringService : Service() {
             .setContentText(message).setOngoing(true).setCategory(NotificationCompat.CATEGORY_SERVICE)
             .addAction(0, "중지", stop).build()
     }
+    private fun recommendation(advice: BackgroundAdvice): Notification {
+        val guide = RecommendationActionReceiver.pendingIntent(this, advice, RecommendationActionKind.GUIDE_NOW)
+        val later = RecommendationActionReceiver.pendingIntent(this, advice, RecommendationActionKind.LATER)
+        return base(ADVICE_CHANNEL)
+            .setContentTitle(getString(R.string.notification_recommendation_title))
+            .setContentText(getString(R.string.notification_recommendation_body, advice.stationName))
+            .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setTimeoutAfter(RECOMMENDATION_HUN_TIMEOUT_MS)
+            .setAutoCancel(true)
+            .addAction(0, getString(R.string.notification_action_guide_now), guide)
+            .addAction(0, getString(R.string.notification_action_later), later)
+            .build()
+    }
     override fun onDestroy() {
         scope.cancel(); if (started) app.runtime.setMonitoring(false)
         getSystemService(NotificationManager::class.java).cancel(ADVICE_ID)
@@ -114,15 +126,15 @@ class MonitoringService : Service() {
     companion object {
         const val ACTION_STOP = "dev.fuelpilot.STOP_MONITORING"
         const val MONITOR_CHANNEL = "monitoring"
-        const val ADVICE_CHANNEL = "fuel_advice"
+        const val ADVICE_CHANNEL = "fuel_recommendations"
         const val FOREGROUND_ID = 201
         const val ADVICE_ID = 202
         fun openApp(context: android.content.Context): PendingIntent = PendingIntent.getActivity(context, 1,
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         fun ensureChannels(context: android.content.Context) {
             context.getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(
-                NotificationChannel(MONITOR_CHANNEL, "모니터링 상태", NotificationManager.IMPORTANCE_LOW),
-                NotificationChannel(ADVICE_CHANNEL, "주유 안내", NotificationManager.IMPORTANCE_DEFAULT)))
+                NotificationChannel(MONITOR_CHANNEL, context.getString(R.string.notification_channel_monitoring), NotificationManager.IMPORTANCE_LOW),
+                NotificationChannel(ADVICE_CHANNEL, context.getString(R.string.notification_channel_recommendations), NotificationManager.IMPORTANCE_HIGH)))
         }
     }
 }

@@ -2,13 +2,22 @@ package dev.fuelpilot
 
 import android.app.Application
 import android.content.Context
+import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.os.SystemClock
 import androidx.datastore.preferences.preferencesDataStore
 import dev.fuelpilot.feature.assist.PreferencesAssistStateStore
+import dev.fuelpilot.data.energy.AaosRangeEnergyRepository
+import dev.fuelpilot.data.energy.AaosVehiclePropertySource
+import dev.fuelpilot.data.energy.UnsupportedEnergyRepository
+import dev.fuelpilot.data.location.PleosFusedLocationPort
+import dev.fuelpilot.data.location.PleosFusedLocationRepository
 import dev.fuelpilot.data.location.UnsupportedLocationRepository
+import dev.fuelpilot.data.navigation.PleosNaviHelperPort
+import dev.fuelpilot.data.navigation.PleosNavigationRepository
 import dev.fuelpilot.data.navigation.UnsupportedNavigationRepository
 import dev.fuelpilot.data.poi.gateway.GatewayConfig
 import dev.fuelpilot.data.poi.gateway.GatewayStationDiscovery
@@ -33,14 +42,28 @@ class FuelPilotApplication : Application() {
     }
 
     val dependencies by lazy {
-        val location = UnsupportedLocationRepository
-        val navigation = UnsupportedNavigationRepository
+        val automotive = packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)
+        val vehicleSource = if (automotive) AaosVehiclePropertySource(this) else null
+        val energy = vehicleSource?.let {
+            AaosRangeEnergyRepository(it, SystemClock::elapsedRealtimeNanos)
+        } ?: UnsupportedEnergyRepository
+        val location = if (automotive) {
+            PleosFusedLocationRepository(PleosFusedLocationPort(this))
+        } else UnsupportedLocationRepository
+        val navigation = if (automotive) {
+            PleosNavigationRepository(
+                PleosNaviHelperPort(this),
+                hasRoutePermission = { hasPermission(NAVI_ROUTE_PERMISSION) },
+                hasRouteSearchPermission = { hasPermission(NAVI_ROUTE_SEARCH_PERMISSION) },
+            )
+        } else UnsupportedNavigationRepository
         // Public origin only. Missing or invalid configuration never falls back to fixtures.
         val config = BuildConfig.STATION_GATEWAY_ORIGIN.takeIf { it.isNotBlank() }
             ?.let { runCatching { GatewayConfig(it) }.getOrNull() }
         val stations = createProductionStations(location, navigation, GatewayStationDiscovery(config))
         AppDependencies(PreferencesAssistStateStore(assistDataStore),
-            location = location, navigation = navigation, stations = stations,
+            energy = energy, location = location, navigation = navigation, stations = stations,
+            vehicleEvents = vehicleSource?.let(::AaosVehicleEvents) ?: UnsupportedVehicleEvents,
             reduceMotion = observeReducedMotion())
     }
 
@@ -53,4 +76,11 @@ class FuelPilotApplication : Application() {
         publish()
         awaitClose { contentResolver.unregisterContentObserver(observer) }
     }.distinctUntilChanged()
+
+    private fun hasPermission(permission: String) = checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+
+    private companion object {
+        const val NAVI_ROUTE_PERMISSION = "pleos.car.permission.NAVI_ROUTE"
+        const val NAVI_ROUTE_SEARCH_PERMISSION = "pleos.car.permission.NAVI_ROUTE_SEARCH"
+    }
 }

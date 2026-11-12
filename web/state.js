@@ -1,6 +1,6 @@
 (function(root){
  'use strict';
- const createState=()=>({screen:'recommendation',motion:'parked',routeStage:'start',celebration:null,refuel:null,seenIds:[],characterEnabled:true,pendingStation:null,routeStation:null,error:null});
+ const createState=()=>({screen:'recommendation',motion:'parked',routeStage:'start',celebration:null,refuel:null,seenIds:[],characterEnabled:true,reserveKm:50,pendingStation:null,routeStation:null,error:null});
  function variant(e){if(e.isFull&&e.wasLow)return 'recovery';if(e.isFull)return 'full';if(Number.isFinite(e.liters)&&e.liters>0&&e.liters<=10)return 'small';return 'normal';}
  const durations={normal:2000,small:1600,full:2400,recovery:2400};
  function poseAt(ms,v='normal'){
@@ -18,6 +18,11 @@
    }
    case 'DONE':return s.celebration?.id===a.id?{...s,celebration:null}:s;
    case 'CHARACTER':return {...s,characterEnabled:!!a.enabled,celebration:a.enabled?s.celebration:null};
+   case 'RESERVE':{
+    if(s.motion!=='parked')return s;
+    const value=Math.max(20,Math.min(100,Math.round(Number(a.value)/10)*10));
+    return Number.isFinite(value)?{...s,reserveKm:value}:s;
+   }
    case 'SELECT_STATION':return a.id&&!s.pendingStation?{...s,pendingStation:a.id,screen:'adding',error:null}:s;
    case 'ROUTE_ADDED':return s.pendingStation===a.id?{...s,pendingStation:null,routeStation:a.id,screen:'added',error:null}:s;
    case 'ROUTE_FAILED':return s.pendingStation===a.id?{...s,pendingStation:null,screen:'recommendation',error:'경유지를 추가하지 못했어요. 다시 시도해 주세요.'}:s;

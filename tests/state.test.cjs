@@ -56,3 +56,9 @@ test('character stays with the message after celebration finishes, motion only b
 test('unknown motion and animation disabled still retain a calm character',()=>{
  for(const s of [{...createState(),motion:'unknown'},{...createState(),characterEnabled:false}]){assert.equal(characterPolicy(s).visible,true);assert.equal(characterPolicy(s).mode,'calm');}
 });
+test('reserve is clamped to safe demo bounds and only changes while parked',()=>{
+ let s=createState();assert.equal(s.reserveKm,50);
+ s=reduce(s,{type:'RESERVE',value:86});assert.equal(s.reserveKm,90);
+ s=reduce(s,{type:'RESERVE',value:500});assert.equal(s.reserveKm,100);
+ s=reduce({...s,motion:'moving'},{type:'RESERVE',value:20});assert.equal(s.reserveKm,100);
+});

@@ -39,3 +39,26 @@ UI와 코드 양쪽에 반영했는지:
 독립 리뷰 Important 2건(저장 지연 중 출발 취소, 차량 이벤트 예외)을 재현한 3개 테스트를 고쳤다. Kotlin 테스트 77개가 통과했다. 앱 런처 아이콘은 기존 승인 뽀동이 이미지로 연결했다. 미완료 Minor: 정차 전용 Settings 진입 버튼. 실제 SDK/차량 연동은 다음 단계다. 상세 내용과 전체 검사 결과는 verification-2026-11-11.md 참조.
 
 최종 전체 `python scripts/dev.py verify`는 빌드/lint 포함 통과(마지막 반복 검사 56초, 291개 작업). 웹17/정책2 검사도 통과했다. 구현 커밋: `65e67d4`(체크포인트 오류), `aa8c196`(앱 연결), `5f3207c`(리뷰 수정). GitHub 통합 브랜치가 구현 커밋과 일치함을 확인했다. 후속 문서 커밋도 같은 브랜치에 보존한다.
+
+## 2026-11-12 UI/UX 제품 디테일 보강
+
+- 작업 브랜치: `ui/ui-overview-20261112`, 시작 커밋 `32c7b94`.
+- 웹: 현재 11개 상황을 실제 동작으로 살펴보는 `web/ui-gallery.html`을 추가했다. 추천 화면에 경로 분석 상태, 주행 가능/목적지/부족 거리, 추천 기준 카드 구조를 더했고 설정 화면에는 20~100km 여유거리 조작과 적용 조건을 명시했다.
+- Android: `AppShell.kt`와 `FuelPilotUi.kt`의 홈·추천·통과 경고·장거리·설정을 같은 상태/거리/행동 위계로 정리했다. 기존 내비게이션 위임, 정차 제한, 영구 캐릭터 표시, 72프레임 아틀라스는 유지했다.
+- 검증: `npm.cmd test` 18개 통과, `npm.cmd run verify` 통과, `python scripts/dev.py doctor` 통과. `python scripts/dev.py verify`와 직접 Gradle 컴파일은 소스 오류가 보고되기 전 Windows Gradle 8.12 transform 캐시의 임시 디렉터리 이동 실패로 중단됐다. 전역 캐시와 격리 임시 캐시 양쪽에서 동일하게 재현되어 환경 문제로 기록한다.
+- 외부 참고 링크: Claude 아티팩트는 이 환경에서 Cloudflare 보안 확인 화면만 렌더링되어 직접 비교하지 못했다. 참고 화면 캡처를 받으면 2차 시각 보정을 진행한다.
+
+### Motion Care 원본 확인 후 V2 방향 보강
+
+사용자가 제공한 ZIP의 HTML과 실제 차량 캡처를 확인했다. 큰 히어로 장면, 상태/환경/설정 카드, 고정 하단 내비게이션, 일관된 깊이와 아이콘 체계를 Fuel Pilot의 주유 판단 흐름에 맞게 번역해 `web/product-vision.html`을 추가했다. 이 화면은 자체 지도를 만들지 않고 정차 홈에서 경로 판단과 추천 근거를 보여주는 제품 시안이다.
+
+팀원 최초 뽀동이 시안과 기존 운영 이미지를 참고해 built-in imagegen으로 `web/assets/podong-v2-master-concept.png`를 만들었다. 더 낮고 말랑한 몸, 안정된 양발, 작은 손발, 부드러운 젤리·클레이 재질을 적용했다. 아직 운영 72프레임 아틀라스는 교체하지 않았으며, 외형 승인 뒤 5개 클립/72프레임을 웹과 Android에 함께 전환한다. 상세 기준은 `docs/PODONG-V2-DIRECTION.md`에 기록했다.
+
+검증: Node 테스트 18개 통과, 패키지 검증 통과, `web/product-vision.js` 구문 검사 통과. 최종 렌더는 `docs/screenshots/fuel-pilot-product-v2-20261112.png`에 저장했다.
+
+## 2026-11-12 Dual-mode companion and background HUN documentation
+
+- Added `docs/DUAL-MODE-IMPLEMENTATION.md` describing the shared companion/HUN runtime, exact motion and action safety rules, reused reducer/persistence/navigation boundaries, validation matrix, and remaining Pleos SDK/device work.
+- Documented the implemented split: monitoring starts only from a visible parked UI, while a running session may deliver and accept an exact key/station-correlated recommendation in either Parked or Moving; Unknown, stale/unsupported/unavailable data, refuel/celebration, duplicate pending work, and mismatches remain blocked.
+- Actual validation observed: process-local `python scripts/dev.py doctor` passed and `verifyArchitecture` passed. Feature tests and full `python scripts/dev.py verify` did not reach Kotlin tests because Gradle 8.12 failed moving transform-cache temporary workspaces to immutable locations, including with an isolated transform cache. No Android test pass count is claimed.
+- Production Pleos energy, location, vehicle events, and navigation adapters remain Unsupported; Pleos-native HUN approval and actual device/vehicle behavior remain unverified. No commit was created.

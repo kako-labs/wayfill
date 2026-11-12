@@ -1,5 +1,6 @@
 package dev.fuelpilot.feature.assist
 
+import dev.fuelpilot.data.navigation.NavigationMode
 import dev.fuelpilot.data.navigation.WaypointResult
 import dev.fuelpilot.ui.*
 import kotlinx.coroutines.CompletableDeferred
@@ -143,6 +144,143 @@ class AssistViewModelTest {
         assertEquals(Screen.Adding, vm.state.value.ui.screen)
     }
 
+    @Test fun movingRecommendationIsCompactAndCanEmitOneCorrelatedWaypointEffect() = runTest {
+        val vm = model()
+        val effects = mutableListOf<AssistEffect.AddWaypoint>()
+        backgroundScope.launch { vm.effects.collect { effects += it as AssistEffect.AddWaypoint } }
+        runCurrent()
+        vm.dispatch(AssistIntent.RouteChanged("route", "destination"))
+        vm.dispatch(AssistIntent.MotionChanged(Motion.Moving))
+        vm.dispatch(AssistIntent.PresentationChanged(recommendation()))
+        runCurrent()
+
+        assertEquals(Screen.Widget, vm.state.value.ui.screen)
+        assertFalse(vm.state.value.ui.detailsAvailable)
+        assertNull(vm.state.value.ui.celebration)
+        vm.dispatch(AssistIntent.SelectStation("station", recommendationKey = "key"))
+        vm.dispatch(AssistIntent.SelectStation("station", recommendationKey = "key"))
+        runCurrent()
+
+        assertEquals(1, effects.size)
+        assertEquals("station", effects.single().stationId)
+        assertEquals(NavigationMode.ADD_WAYPOINT, effects.single().mode)
+        assertEquals("route", effects.single().expectedRouteId)
+        assertEquals(effects.single().requestId, vm.state.value.pending?.requestId)
+        assertEquals(Screen.Widget, vm.state.value.ui.screen)
+        val pending = vm.state.value.pending
+        vm.dispatch(AssistIntent.MotionChanged(Motion.Moving))
+        runCurrent()
+        assertEquals(pending, vm.state.value.pending)
+    }
+
+    @Test fun completedMovingRecommendationCannotBeSelectedAgainBeforeContinue() = runTest {
+        val vm = model()
+        val effects = mutableListOf<AssistEffect>()
+        backgroundScope.launch { vm.effects.collect { effects += it } }
+        runCurrent()
+        vm.dispatch(AssistIntent.RouteChanged("route", "destination"))
+        vm.dispatch(AssistIntent.MotionChanged(Motion.Moving))
+        vm.dispatch(AssistIntent.PresentationChanged(recommendation()))
+        runCurrent()
+
+        val selection = AssistIntent.SelectStation("station", recommendationKey = "key")
+        vm.dispatch(selection)
+        runCurrent()
+        val pending = vm.state.value.pending!!
+        val succeeded = WaypointResult.Succeeded(pending.requestId, pending.stationId)
+        vm.dispatch(AssistIntent.NavigationCompleted(succeeded))
+        runCurrent()
+        val effectCount = effects.size
+        assertEquals(1, effectCount)
+
+        vm.dispatch(selection)
+        runCurrent()
+        assertNull(vm.state.value.pending)
+        assertEquals(succeeded, vm.state.value.navigationResult)
+        assertEquals(effectCount, effects.size)
+    }
+
+    @Test fun movingRecommendationAndWaypointEffectWaitForDurableExposure() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        var blocked = false
+        var stored = AssistStoredState()
+        val vm = AssistViewModel(object : AssistStateStore {
+            override suspend fun read() = stored
+            override suspend fun write(state: AssistStoredState) {
+                if (blocked) gate.await()
+                stored = state
+            }
+        }, scope = backgroundScope, requestId = { "moving-request" })
+        val effects = mutableListOf<AssistEffect>()
+        backgroundScope.launch { vm.effects.collect { effects += it } }
+        runCurrent()
+        vm.dispatch(AssistIntent.RouteChanged("route", "destination"))
+        vm.dispatch(AssistIntent.MotionChanged(Motion.Moving))
+        runCurrent()
+
+        blocked = true
+        vm.dispatch(AssistIntent.PresentationChanged(recommendation()))
+        vm.dispatch(AssistIntent.SelectStation("station", recommendationKey = "key"))
+        runCurrent()
+        assertEquals(AssistAvailability.UNAVAILABLE, vm.state.value.presentation.availability)
+        assertNull(vm.state.value.pending)
+        assertTrue(effects.isEmpty())
+
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(AssistAvailability.READY, vm.state.value.presentation.availability)
+        assertEquals("moving-request", vm.state.value.pending?.requestId)
+        assertEquals(1, effects.size)
+    }
+
+    @Test fun reducerRejectsEveryUnsafeOrMismatchedRecommendationAcceptance() {
+        fun state(
+            motion: Motion = Motion.Parked,
+            presentation: AssistPresentation = recommendation(),
+            ui: FuelUiState = FuelUiState(motion = motion),
+        ) = AssistViewState(
+            ready = true,
+            ui = ui,
+            presentation = presentation,
+            persisted = AssistStoredState(routeId = "route", destinationId = "destination"),
+        )
+        fun effects(
+            state: AssistViewState,
+            stationId: String = "station",
+            recommendationKey: String? = "key",
+        ) = reduceAssist(
+            state,
+            AssistIntent.SelectStation(stationId, recommendationKey),
+            wallClockMs = 1_000L,
+            monotonicClockMs = 25L,
+            requestId = "request",
+        ).effects
+
+        assertTrue(effects(state(motion = Motion.Unknown)).isEmpty())
+        assertTrue(effects(state(motion = Motion.Moving), recommendationKey = null).isEmpty())
+        for (availability in listOf(
+            AssistAvailability.STALE,
+            AssistAvailability.UNAVAILABLE,
+            AssistAvailability.UNSUPPORTED,
+        )) {
+            assertTrue(effects(state(presentation = recommendation().copy(availability = availability))).isEmpty())
+        }
+        assertTrue(effects(state(), stationId = "other").isEmpty())
+        assertTrue(effects(state(), recommendationKey = "other-key").isEmpty())
+        assertTrue(effects(state(presentation = recommendation(key = "")), recommendationKey = "").isEmpty())
+        assertTrue(effects(state(ui = FuelUiState(
+            motion = Motion.Parked,
+            refuel = RefuelEvent("receipt"),
+            celebration = Celebration("receipt", Variant.Normal),
+        ))).isEmpty())
+
+        val first = reduceAssist(
+            state(), AssistIntent.SelectStation("station", "key"), 1_000L, 25L, "request-1",
+        )
+        assertEquals(1, first.effects.size)
+        assertTrue(effects(first.state).isEmpty())
+    }
+
     @Test fun retryUsesNewRequestIdAndOldOrWrongStationCallbackCannotCompleteIt() = runTest {
         val vm = model()
         readyRecommendation(vm)
@@ -235,6 +373,35 @@ class AssistViewModelTest {
         readyRecommendation(restored)
         assertEquals(Screen.Widget, restored.state.value.ui.screen)
         assertEquals("key", restored.state.value.persisted.lastRecommendationKey)
+    }
+
+    @Test fun movingRecommendationDeliveryIsPersistedOnceAndDoesNotReplayBroadParkedActing() = runTest {
+        val writes = mutableListOf<AssistStoredState>()
+        val store = object : AssistStateStore {
+            private var value = AssistStoredState()
+            override suspend fun read() = value
+            override suspend fun write(state: AssistStoredState) {
+                value = state
+                writes += state
+            }
+        }
+        val vm = AssistViewModel(store, scope = backgroundScope)
+        runCurrent()
+        vm.dispatch(AssistIntent.RouteChanged("route", "destination"))
+        vm.dispatch(AssistIntent.MotionChanged(Motion.Moving))
+        vm.dispatch(AssistIntent.PresentationChanged(recommendation()))
+        vm.dispatch(AssistIntent.PresentationChanged(recommendation()))
+        runCurrent()
+
+        assertEquals(Screen.Widget, vm.state.value.ui.screen)
+        assertEquals(setOf("key"), vm.state.value.persisted.exposedRecommendationKeys)
+        assertEquals(1, writes.count { "key" in it.exposedRecommendationKeys })
+        vm.dispatch(AssistIntent.MotionChanged(Motion.Parked))
+        runCurrent()
+        assertEquals(Screen.Widget, vm.state.value.ui.screen)
+        assertNull(vm.state.value.activeRecommendationKey)
+        assertTrue(vm.state.value.ui.detailsAvailable)
+        assertNull(vm.state.value.ui.celebration)
     }
 
     @Test fun initialUnknownSnapshotDoesNotEraseRestoredRouteExposure() = runTest {
@@ -341,18 +508,18 @@ class AssistViewModelTest {
         vm.dispatch(AssistIntent.MotionChanged(Motion.Parked))
         vm.dispatch(AssistIntent.PresentationChanged(recommendation().copy(targetScreen = Screen.Widget, recommendationKey = null)))
         runCurrent()
-        assertTrue(vm.state.value.overlayVisible)
+        assertTrue(vm.state.value.assistVisible)
         assertEquals(Screen.Widget, vm.state.value.ui.screen)
         assertFalse(vm.state.value.ui.detailsAvailable)
         vm.dispatch(AssistIntent.SelectStation("station")); runCurrent()
         assertNull(vm.state.value.pending)
         vm.dispatch(AssistIntent.PresentationChanged(recommendation().copy(targetScreen = null, recommendationKey = null)))
         runCurrent()
-        assertFalse(vm.state.value.overlayVisible)
+        assertFalse(vm.state.value.assistVisible)
         for (availability in listOf(AssistAvailability.UNAVAILABLE, AssistAvailability.STALE, AssistAvailability.UNSUPPORTED)) {
             vm.dispatch(AssistIntent.PresentationChanged(AssistPresentation(FuelRouteUi(), Screen.Widget, null, availability)))
             runCurrent()
-            assertTrue(vm.state.value.overlayVisible)
+            assertTrue(vm.state.value.assistVisible)
             assertFalse(vm.state.value.ui.statusMessage.isNullOrBlank())
             assertNull(vm.state.value.presentation.route.rangeKm)
             assertNull(vm.state.value.presentation.route.recommended)
@@ -403,7 +570,7 @@ class AssistViewModelTest {
         send(AssistIntent.MotionChanged(Motion.Parked))
         send(AssistIntent.Continue)
         send(AssistIntent.PresentationChanged(AssistPresentation(FuelRouteUi(), null, null, AssistAvailability.READY)))
-        assertFalse(state.overlayVisible)
+        assertFalse(state.assistVisible)
     }
 
     @Test fun motionPreferencesCancelAnimationWithoutHidingCharacterOrConfirmation() = runTest {

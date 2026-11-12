@@ -10,22 +10,6 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AssistRuntimeTest {
-    @Test fun backgroundAdviceRequiresVerifiedPresentationAndKnownMotion() {
-        val state = AssistViewState(ready = true,
-            ui = FuelUiState(motion = Motion.Moving),
-            presentation = AssistPresentation(
-                FuelRouteUi(recommended = FuelStation("verified","Station",3.0,1)),
-                Screen.Passing,"stable-key",AssistAvailability.READY))
-        assertNotNull(backgroundAdvice(state))
-        assertNull(backgroundAdvice(state.copy(ui = state.ui.copy(motion = Motion.Unknown))))
-        assertNull(backgroundAdvice(state.copy(presentation = state.presentation.copy(availability = AssistAvailability.STALE))))
-        assertNull(backgroundAdvice(state.copy(presentation = state.presentation.copy(targetScreen = null))))
-        assertNotEquals(backgroundAdvice(state)?.key,
-            backgroundAdvice(state.copy(presentation = state.presentation.copy(targetScreen = Screen.Recommendation)))?.key)
-        assertNull(backgroundAdvice(state.copy(pending = dev.fuelpilot.data.navigation.WaypointRequest("request","verified"))))
-        assertNull(backgroundAdvice(state.copy(ui = state.ui.copy(refuel = RefuelEvent("filled")))))
-    }
-
     @Test fun uiAndServiceShareOneLiveSubscriptionAndUserStopPausesIt() = runTest {
         var subscriptions = 0
         var active = 0

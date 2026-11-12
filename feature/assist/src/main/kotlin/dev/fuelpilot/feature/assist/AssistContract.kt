@@ -1,8 +1,8 @@
 package dev.fuelpilot.feature.assist
 
+import dev.fuelpilot.data.navigation.NavigationMode
 import dev.fuelpilot.data.navigation.WaypointRequest
 import dev.fuelpilot.data.navigation.WaypointResult
-import dev.fuelpilot.data.navigation.NavigationMode
 import dev.fuelpilot.ui.FuelRouteUi
 import dev.fuelpilot.ui.FuelUiEvent
 import dev.fuelpilot.ui.FuelUiState
@@ -16,7 +16,12 @@ sealed interface AssistIntent {
     data class RouteChanged(val routeId: String?, val destinationId: String?) : AssistIntent
     data class MotionChanged(val value: Motion) : AssistIntent
     data class RefuelConfirmed(val value: RefuelEvent) : AssistIntent
-    data class SelectStation(val stationId: String) : AssistIntent
+    /**
+     * [recommendationKey] lets compact/HUN surfaces prove that their action still belongs to the
+     * recommendation they rendered. It remains optional only for the existing parked in-app
+     * caller, which is serialized with presentation updates by [AssistViewModel].
+     */
+    data class SelectStation(val stationId: String, val recommendationKey: String? = null) : AssistIntent
     data class NavigationCompleted(val value: WaypointResult) : AssistIntent
     data class Show(val screen: Screen) : AssistIntent
     data class CelebrationFinished(val id: String) : AssistIntent
@@ -40,8 +45,11 @@ data class AssistViewState(
     val navigationResult: WaypointResult? = null,
     val requestedScreen: Screen? = null,
     val activeRecommendationKey: String? = null,
-    val overlayVisible: Boolean = true,
-)
+    val assistVisible: Boolean = true,
+) {
+    /** Compatibility for hosts that still call the assist surface an overlay. */
+    val overlayVisible: Boolean get() = assistVisible
+}
 
 data class AssistTransition(val state: AssistViewState, val effects: List<AssistEffect> = emptyList())
 
@@ -70,12 +78,21 @@ fun reduceAssist(
             }
         }
         is AssistIntent.MotionChanged -> {
-            next = if (intent.value == Motion.Parked) state.copy(ui = state.ui.copy(motion = intent.value))
-            else state.clearTransient().copy(
-                ui = state.clearTransient().ui.copy(motion = intent.value),
-                // A repeated initial Unknown is a snapshot, not a departure event.
-                persisted = if (state.ui.motion == intent.value) state.persisted else state.persisted.clearExposure(),
-            )
+            next = when {
+                intent.value == Motion.Parked -> state.copy(
+                    ui = state.ui.copy(motion = intent.value),
+                    // A recommendation already delivered in the moving surface must not trigger
+                    // broad parked acting merely because the vehicle stopped.
+                    activeRecommendationKey = state.activeRecommendationKey.takeUnless {
+                        state.ui.motion == Motion.Moving
+                    },
+                )
+                state.ui.motion == intent.value -> state.copy(ui = state.ui.copy(motion = intent.value))
+                else -> state.clearTransient().copy(
+                    ui = state.clearTransient().ui.copy(motion = intent.value),
+                    persisted = state.persisted.clearExposure(),
+                )
+            }
         }
         is AssistIntent.PresentationChanged -> {
             // An in-flight evaluation may finish after a parked policy edit.
@@ -111,9 +128,15 @@ fun reduceAssist(
         }
         is AssistIntent.SelectStation -> {
             val station = state.presentation.route.recommended
-            if (state.ui.motion == Motion.Parked && state.pending == null && state.ui.refuel == null &&
+            val recommendationKey = state.presentation.recommendationKey
+            val matchesRecommendation = intent.recommendationKey == recommendationKey ||
+                (state.ui.motion == Motion.Parked && intent.recommendationKey == null)
+            if (state.ui.motion in actionableMotion && state.pending == null &&
+                state.navigationResult !is WaypointResult.Succeeded &&
+                state.ui.refuel == null && state.ui.celebration == null &&
                 state.presentation.availability == AssistAvailability.READY &&
                 state.presentation.targetScreen in recommendationScreens &&
+                !recommendationKey.isNullOrBlank() && matchesRecommendation &&
                 station?.id == intent.stationId && intent.stationId.isNotBlank() && requestId.isNotBlank()
             ) {
                 val mode = if (state.persisted.routeId == null) NavigationMode.SET_DESTINATION else NavigationMode.ADD_WAYPOINT
@@ -162,6 +185,7 @@ fun reduceAssist(
 
 private val recommendationScreens = setOf(Screen.Recommendation, Screen.Passing)
 private val userScreens = setOf(Screen.Analysis, Screen.Settings, Screen.LongDrive)
+private val actionableMotion = setOf(Motion.Parked, Motion.Moving)
 
 /** Motion > refuel > pending navigation > result > recommendation > monitoring/no-action > unavailable. */
 private fun resolveScreen(state: AssistViewState): AssistViewState {
@@ -183,7 +207,11 @@ private fun resolveScreen(state: AssistViewState): AssistViewState {
     val visible = state.ui.motion != Motion.Parked || state.ui.refuel != null || state.pending != null ||
         result != null || state.requestedScreen != null || presentation.targetScreen != null ||
         presentation.availability != AssistAvailability.READY
-    val activelyExposed = screen in recommendationScreens && recommendation && key != null
+    val activelyExposed = recommendation && exposed && key != null && when (state.ui.motion) {
+        Motion.Parked -> screen in recommendationScreens
+        Motion.Moving -> screen == Screen.Widget
+        Motion.Unknown -> false
+    }
     val stored = if (activelyExposed) state.persisted.copy(
         lastRecommendationKey = key,
         exposedRecommendationKeys = state.persisted.exposedRecommendationKeys + key!!,
@@ -191,7 +219,7 @@ private fun resolveScreen(state: AssistViewState): AssistViewState {
     return state.copy(
         persisted = stored,
         activeRecommendationKey = if (activelyExposed) key else state.activeRecommendationKey,
-        overlayVisible = visible,
+        assistVisible = visible,
         ui = state.ui.copy(
             screen = screen,
             celebration = state.ui.celebration.takeIf { state.ui.motion == Motion.Parked },

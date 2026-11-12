@@ -2,6 +2,7 @@ package dev.fuelpilot
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.core.net.toUri
 import android.os.Build
 import android.os.Bundle
@@ -17,20 +18,25 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModelProvider
+import dev.fuelpilot.data.location.PleosFusedLocationPort
 
 class MainActivity : ComponentActivity() {
     private val app get() = application as FuelPilotApplication
     private val permissionRequest = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         // This is completion of the user's explicit start action, never a boot restart.
-        app.monitoring.start()
+        if (app.monitoring.permissionsSatisfied()) app.monitoring.start()
+        else app.monitoring.problem("위치와 알림 권한을 허용해야 모니터링을 시작할 수 있어요.")
     }
     private fun startMonitoring() {
-        if (app.runtime.state.value.ui.motion == dev.fuelpilot.ui.Motion.Moving) { app.monitoring.problem("정차 후 모니터링을 시작해 주세요."); return }
+        if (!monitoringStartAllowed(app.runtime.state.value.ui.motion)) {
+            app.monitoring.problem("P단에 놓고 정차한 뒤 모니터링을 시작해 주세요.")
+            return
+        }
         if (app.monitoring.permissionsSatisfied()) { app.monitoring.start(); return }
-        permissionRequest.launch(buildList {
-            add(Manifest.permission.ACCESS_COARSE_LOCATION); add(Manifest.permission.ACCESS_FINE_LOCATION)
-            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
-        }.toTypedArray())
+        permissionRequest.launch(monitoringRuntimePermissions(
+            automotive = packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE),
+            sdkInt = Build.VERSION.SDK_INT,
+        ).toTypedArray())
     }
     override fun onStart() { super.onStart(); app.setUiVisible(true) }
     override fun onStop() { if (!isChangingConfigurations) app.setUiVisible(false); super.onStop() }
@@ -52,4 +58,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+internal fun monitoringRuntimePermissions(automotive: Boolean, sdkInt: Int): List<String> = buildList {
+    add(Manifest.permission.ACCESS_COARSE_LOCATION)
+    add(Manifest.permission.ACCESS_FINE_LOCATION)
+    if (sdkInt >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+    if (automotive) add(PleosFusedLocationPort.FUSED_LOCATION_PERMISSION)
 }

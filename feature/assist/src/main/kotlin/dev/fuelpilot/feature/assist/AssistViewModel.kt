@@ -131,9 +131,11 @@ class AssistViewModel(
     private fun visibleState(logical: AssistViewState, durable: AssistStoredState): AssistViewState {
         val refuelUnsaved = logical.ui.refuel?.id?.let { it !in durable.processedRefuels } == true
         val policyUnsaved = logical.persisted.minimumReserveKm != durable.minimumReserveKm
-        val exposureUnsaved = logical.activeRecommendationKey?.let { it !in durable.exposedRecommendationKeys } == true &&
-            logical.ui.screen in setOf(Screen.Recommendation, Screen.Passing, Screen.Adding)
-        if (logical.ui.motion == Motion.Parked && (refuelUnsaved || exposureUnsaved || policyUnsaved)) {
+        val exposureUnsaved = logical.activeRecommendationKey?.let { it !in durable.exposedRecommendationKeys } == true
+        val positiveExposureUnsaved =
+            (logical.ui.motion == Motion.Parked && (refuelUnsaved || policyUnsaved)) ||
+                (logical.ui.motion != Motion.Unknown && exposureUnsaved)
+        if (positiveExposureUnsaved) {
             return logical.copy(
                 pending = null, persisted = durable,
                 presentation = AssistPresentation(FuelRouteUi(), Screen.Widget, null, AssistAvailability.UNAVAILABLE),
@@ -146,7 +148,7 @@ class AssistViewModel(
 
     private fun storageUnavailable(previous: AssistViewState) = previous.copy(
         ready = false, pending = null, navigationResult = null, requestedScreen = null,
-        activeRecommendationKey = null, overlayVisible = true,
+        activeRecommendationKey = null, assistVisible = true,
         presentation = AssistPresentation(FuelRouteUi(), Screen.Widget, null, AssistAvailability.UNAVAILABLE),
         ui = previous.ui.copy(screen = Screen.Widget, refuel = null, celebration = null,
             pendingStation = null, routeStation = null, error = null, detailsAvailable = false,
