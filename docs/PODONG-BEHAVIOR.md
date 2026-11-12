@@ -27,7 +27,7 @@ characterEnabled=false 또는 접근성 모션 줄이기에서는 calm 첫 프�
 - Android PodongClips.kt, PodongAnimation.kt, drawable-nodpi/podong_atlas.png: 같은 원본·프레임 타이밍의 Compose Canvas 재생기. 추가 애니메이션 의존성 없음.
 - PROVENANCE.json, generation-request.json: 생성 출처와 동작 요청 기록.
 
-모든 생성 작업과 임시 파일은 D:/hackathon-tmp/fuel-pilot-animation-work에 있다. Codex 생성 이미지 저장 경로도 D의 저장소로 연결했다. 회사 앱에서는 전달 모듈만 복사하면 되며 이 작업 폴더나 이미지 생성 도구가 필요하지 않다.
+과거 생성 임시 폴더는 배포에 포함하지 않는다. 이 역사적 아틀라스를 다시 내보낼 때는 `tools/export-animation-assets.py CURATED_RUN_DIR [IMG2WEBP_EXECUTABLE]`로 입력과 인코더 경로를 명시한다. 현재 소프트 선셋 자산은 `web/assets/sunset/`과 `tools/generate-sunset-motion.cjs`를 기준으로 하며 앱 실행에 이미지 생성 도구가 필요하지 않다.
 
 차량 연료·주유 확정·내비 콜백은 기존 앱에서 연결해야 한다. 실제 Pleos 기기 재생과 순정 지도 위 표시 권한은 아직 검증하지 않았다.
 

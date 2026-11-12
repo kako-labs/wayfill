@@ -39,7 +39,7 @@ class NativeDemoTest {
     @Test fun wholeFlowNavigationSuccessFailureAndNearby() {
         waitForState { compose.activity.runtime.state.value.presentation.route.recommended != null }
         compose.onNodeWithTag("nav_assist").performClick()
-        compose.onNodeWithText("여기서 주유하기").performScrollTo().performClick()
+        compose.onNode(hasTestTag("parked_guide_now") or hasTestTag("home_guide_now") or hasTestTag("guide_now")).performClick()
         compose.activityRule.scenario.recreate()
         waitForState { compose.activity.runtime.state.value.ui.screen == Screen.Added }
         assertEquals(1, compose.activity.sources.navigationCalls)
@@ -47,13 +47,13 @@ class NativeDemoTest {
         compose.runOnIdle { compose.activity.runtime.dispatch(AssistIntent.Continue) }
         compose.onNodeWithTag("demo_recommendation").performScrollTo().performClick()
         waitForState { compose.activity.runtime.state.value.ui.screen == Screen.Recommendation }
-        compose.onNodeWithText("여기서 주유하기").performScrollTo().performClick()
+        compose.onNode(hasTestTag("parked_guide_now") or hasTestTag("home_guide_now") or hasTestTag("guide_now")).performClick()
         waitForState { compose.activity.runtime.state.value.ui.error != null }
         compose.onNodeWithTag("demo_nearby").performScrollTo().performClick()
         waitForState { compose.activity.runtime.state.value.persisted.routeId == null &&
             compose.activity.runtime.state.value.presentation.route.recommended != null }
         compose.onNodeWithTag("demo_navsuccess").performScrollTo().performClick()
-        compose.onNodeWithText("여기서 주유하기").performScrollTo().performClick()
+        compose.onNode(hasTestTag("parked_guide_now") or hasTestTag("home_guide_now") or hasTestTag("guide_now")).performClick()
         waitForState { compose.activity.runtime.state.value.ui.screen == Screen.Added }
         assertEquals(3, compose.activity.sources.navigationCalls)
     }

@@ -16,13 +16,55 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 class MonitoringPolicyTest {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun hidingAndShowingTheAppReevaluatesAnUnchangedRecommendation() = runTest {
+        val states = MutableStateFlow(recommendationState())
+        val visible = MutableStateFlow(true)
+        val observed = mutableListOf<BackgroundAdvice?>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            monitoringSnapshots(states, visible).collect { (state, uiVisible) ->
+                observed += if (uiVisible) null else backgroundAdvice(state)
+            }
+        }
+        runCurrent()
+        assertNull(observed.single())
+        visible.value = false; runCurrent()
+        assertEquals("station-1", observed.last()?.stationId)
+        visible.value = true; runCurrent()
+        assertNull(observed.last())
+        assertEquals(3, observed.size)
+    }
+
+    @Test fun dismissedCompanionIsNotReintroducedAsABackgroundAlert() {
+        val state = recommendationState()
+        val dismissed = state.copy(persisted = state.persisted.copy(exposedRecommendationKeys = setOf("recommendation-1")))
+        assertNull(backgroundAdvice(dismissed))
+        assertTrue(backgroundAdvice(dismissed.copy(activeRecommendationKey = "recommendation-1")) != null)
+    }
+
+    @Test fun notificationUsesTheSameReasonAndRouteFactsAsTheCompanion() {
+        val state = recommendationState()
+        val route = state.presentation.route.copy(rangeKm = 18.0, destinationKm = 38.0,
+            nextAfterPassing = FuelStation("next", "다음", 35.0, 2))
+        val advice = backgroundAdvice(state.copy(presentation = state.presentation.copy(route = route, targetScreen = Screen.Passing)))!!
+        assertEquals("지나치면 다음 주유소까지 연료 부족 예상", advice.reason)
+        assertEquals("3km 앞 · 경로 +1분", advice.routeFacts)
+    }
+
     @Test fun adviceIsCreatedForFreshParkedOrMovingRecommendationButNotUnknown() {
         val valid = recommendationState()
-        assertEquals(BackgroundAdvice("recommendation-1", "station-1", "Station One"), backgroundAdvice(valid))
+        assertEquals(BackgroundAdvice("recommendation-1", "station-1", "Station One", routeFacts = "3km 앞 · 경로 +1분"), backgroundAdvice(valid))
         assertEquals(
-            BackgroundAdvice("recommendation-1", "station-1", "Station One"),
+            BackgroundAdvice("recommendation-1", "station-1", "Station One", routeFacts = "3km 앞 · 경로 +1분"),
             backgroundAdvice(valid.copy(ui = valid.ui.copy(motion = Motion.Moving))),
         )
 

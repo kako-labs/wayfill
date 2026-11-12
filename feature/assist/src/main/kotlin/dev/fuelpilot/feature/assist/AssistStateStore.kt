@@ -15,6 +15,7 @@ data class AssistStoredState(
     val lastRecommendationKey: String? = null,
     val exposedRecommendationKeys: Set<String> = emptySet(),
     val minimumReserveKm: Int = 50,
+    val refuelHistory: List<RefuelRecord> = emptyList(),
 ) {
     fun pruned(nowMs: Long): AssistStoredState = copy(
         processedRefuels = processedRefuels.entries
@@ -24,6 +25,7 @@ data class AssistStoredState(
             .associate { it.key to it.value },
         exposedRecommendationKeys = exposedRecommendationKeys + listOfNotNull(lastRecommendationKey),
         minimumReserveKm = minimumReserveKm.takeIf(::validReserveKm) ?: 50,
+        refuelHistory = retainedRefuelHistory(refuelHistory, nowMs),
     )
 }
 

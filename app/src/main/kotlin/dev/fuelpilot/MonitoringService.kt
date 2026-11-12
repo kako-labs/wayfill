@@ -54,7 +54,8 @@ class MonitoringService : Service() {
             }
         }
         if (collector == null) collector = scope.launch {
-            app.runtime.state.collect { state ->
+            // Visibility must trigger publication even when an unchanged live snapshot emits nothing.
+            monitoringSnapshots(app.runtime.state, app.uiVisibility).collect { (state, visible) ->
                 if (!app.monitoring.permissionsSatisfied() || !app.monitoring.locationEnabled()) {
                     app.runtime.setMonitoring(false)
                     app.runtime.retry()
@@ -70,7 +71,7 @@ class MonitoringService : Service() {
                 val manager = getSystemService(NotificationManager::class.java)
                 try {
                     manager.notify(FOREGROUND_ID, ongoing(status))
-                    val advice = if (app.uiVisible) null else backgroundAdvice(state)
+                    val advice = if (visible) null else backgroundAdvice(state)
                     if (advice == null) manager.cancel(ADVICE_ID)
                     advice?.let { current ->
                         if (!app.uiVisible && app.monitoring.claimAdvice(current.key) && !app.uiVisible) {
@@ -95,7 +96,8 @@ class MonitoringService : Service() {
     private var watchdog: Job? = null
     private fun base(channel: String) = NotificationCompat.Builder(this, channel)
         .setSmallIcon(R.drawable.ic_monitoring)
-        .setLargeIcon(BitmapFactory.decodeResource(resources, R.drawable.podong_launcher))
+        .setLargeIcon(BitmapFactory.decodeResource(resources, dev.fuelpilot.ui.R.drawable.podong_sunset,
+            BitmapFactory.Options().apply { inSampleSize=8 }))
         .setContentIntent(openApp(this)).setOnlyAlertOnce(true).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
     private fun ongoing(message: String): Notification {
         val stop = PendingIntent.getService(this, 2, Intent(this, MonitoringService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -107,8 +109,9 @@ class MonitoringService : Service() {
         val guide = RecommendationActionReceiver.pendingIntent(this, advice, RecommendationActionKind.GUIDE_NOW)
         val later = RecommendationActionReceiver.pendingIntent(this, advice, RecommendationActionKind.LATER)
         return base(ADVICE_CHANNEL)
-            .setContentTitle(getString(R.string.notification_recommendation_title))
-            .setContentText(getString(R.string.notification_recommendation_body, advice.stationName))
+            .setContentTitle(advice.reason)
+            // Keep distance/detour first so a long station name cannot push the actionable facts out of the HUN.
+            .setContentText(listOf(advice.routeFacts, advice.stationName).filter { it.isNotBlank() }.joinToString(" · "))
             .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setTimeoutAfter(RECOMMENDATION_HUN_TIMEOUT_MS)

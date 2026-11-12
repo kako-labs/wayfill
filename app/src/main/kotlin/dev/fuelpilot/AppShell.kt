@@ -21,10 +21,10 @@ import dev.fuelpilot.feature.assist.*
 import dev.fuelpilot.ui.*
 import kotlin.math.roundToInt
 
-private val Honey = Color(0xFFF0C46E)
-private val Graphite = Color(0xFF171512)
-private val WarmLine = Color(0xFF393329)
-private val Muted = Color(0xFFB9AE9D)
+private val Honey = FuelPilotColors.Gold
+private val Graphite = FuelPilotColors.Surface
+private val WarmLine = FuelPilotColors.Line
+private val Muted = FuelPilotColors.Muted
 
 @Composable
 fun AppShell(
@@ -32,68 +32,60 @@ fun AppShell(
     monitoring: MonitoringUiState? = null, onMonitoringChange: (Boolean) -> Unit = {},
     onRetry: () -> Unit = {}, onOpenPermissionSettings: () -> Unit = {}, onDemoLaunch: (() -> Unit)? = null,
 ) {
+    FuelPilotTheme {
     var page by rememberSaveable { mutableStateOf("home") }
     LaunchedEffect(state.ui.motion) {
         if (state.ui.motion != Motion.Parked) page = "home"
     }
-    if (state.ui.motion != Motion.Parked) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
+    val smallRecommendation=useCompactCompanion(maxWidth.value,maxHeight.value) && state.assistVisible &&
+        state.presentation.availability==AssistAvailability.READY && state.presentation.targetScreen in setOf(Screen.Recommendation,Screen.Passing)
+    if (state.ui.motion != Motion.Parked || smallRecommendation) {
         // Driving/unknown states use only the compact companion beside navigation: no parked navigation, scrolling,
         // settings, monitoring controls, or home actions may leak into this branch.
-        Box(modifier.fillMaxSize().background(Color(0xFF0C0B09))) {
+        Box(Modifier.fillMaxSize().background(FuelPilotColors.Backdrop)) {
             FuelPilotUi(state = state, onIntent = onIntent, modifier = Modifier.fillMaxSize())
         }
-        return
+        return@BoxWithConstraints
     }
     BackHandler(page != "home") { page = "home" }
-    Column(modifier.fillMaxSize().background(Color(0xFF0C0B09))) {
-        Surface(color = Color(0xFF12100D), border = BorderStroke(0.5.dp, WarmLine)) {
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                Row(
-                    Modifier.align(Alignment.Center).widthIn(max = 1500.dp).fillMaxWidth()
-                        .heightIn(min = 88.dp).padding(horizontal = if (maxWidth < 760.dp) 12.dp else 28.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (maxWidth >= 760.dp) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("FUEL PILOT", color = Honey, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                            Text("차량 연료 어시스턴트", color = Muted, fontSize = 16.sp)
-                        }
-                    }
-                    Row(
-                        modifier = if (maxWidth < 760.dp) Modifier.fillMaxWidth() else Modifier,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        for ((key, label) in listOf("home" to "홈", "assist" to "주유 안내", "settings" to "설정")) {
-                            Surface(
-                                modifier = if (maxWidth < 760.dp) Modifier.weight(1f) else Modifier,
-                                color = if (page == key) Color(0xFF2B2419) else Color.Transparent,
-                                shape = RoundedCornerShape(16.dp),
-                            ) {
-                                TextButton(
-                                    onClick = { page = key },
-                                    modifier = Modifier.heightIn(min = 76.dp).testTag("nav_$key"),
-                                ) {
-                                    Text(label, color = if (page == key) Honey else Muted, fontSize = 22.sp, fontWeight = if (page == key) FontWeight.Bold else FontWeight.Normal)
-                                }
-                            }
-                        }
-                    }
-                }
+    Box(Modifier.fillMaxSize().background(FuelPilotColors.Backdrop)) {
+      SunsetBackdrop(Modifier.matchParentSize())
+      Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal=28.dp,vertical=18.dp),verticalAlignment=Alignment.CenterVertically) {
+            Text("FUEL PILOT",Modifier.weight(1f),color=FuelPilotColors.Text,fontSize=28.sp,fontWeight=FontWeight.ExtraBold)
+            Surface(color=Color(0x88624743),shape=RoundedCornerShape(99.dp),border=BorderStroke(1.dp,WarmLine)) {
+                Text("정차 중",Modifier.padding(horizontal=24.dp,vertical=12.dp),color=FuelPilotColors.Text,fontSize=20.sp)
             }
         }
         Box(Modifier.weight(1f)) {
             when (page) {
                 "settings" -> FuelPilotSettings(state, onIntent, { page = "home" })
+                "records" -> FuelHistoryScreen(state,onIntent)
                 "assist" -> if (state.assistVisible) FuelPilotUi(state, { if (it == AssistIntent.Continue) page = "home"; onIntent(it) })
-                    else HomeContent(state, monitoring, onMonitoringChange, onRetry, onOpenPermissionSettings, onDemoLaunch)
-                else -> HomeContent(state, monitoring, onMonitoringChange, onRetry, onOpenPermissionSettings, onDemoLaunch)
+                    else HomeContent(state, monitoring, onMonitoringChange, onRetry, onOpenPermissionSettings, onDemoLaunch, onIntent)
+                else -> HomeContent(state, monitoring, onMonitoringChange, onRetry, onOpenPermissionSettings, onDemoLaunch, onIntent)
             }
         }
+        Surface(Modifier.padding(horizontal=24.dp,vertical=12.dp),color=Color(0x99624743),shape=RoundedCornerShape(99.dp),border=BorderStroke(1.dp,WarmLine)) {
+            Row(Modifier.fillMaxWidth().padding(6.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                for((key,label) in listOf("home" to "홈","assist" to "주유 안내","records" to "기록","settings" to "설정")) {
+                    TextButton(onClick={page=key},modifier=Modifier.weight(1f).heightIn(min=76.dp).testTag("nav_$key"),
+                        colors=ButtonDefaults.textButtonColors(containerColor=if(page==key)Color(0x668F633E)else Color.Transparent),shape=RoundedCornerShape(99.dp)) {
+                        Text(label,color=if(page==key)Honey else Muted,fontSize=22.sp,fontWeight=if(page==key)FontWeight.Bold else FontWeight.Normal)
+                    }
+                }
+            }
+        }
+      }
+
+    }
+    }
     }
 }
 
 @Composable private fun HomeContent(state: AssistViewState, monitoring: MonitoringUiState?, onMonitoringChange: (Boolean) -> Unit,
-    onRetry: () -> Unit, onOpenPermissionSettings: () -> Unit, onDemoLaunch: (() -> Unit)?) {
+    onRetry: () -> Unit, onOpenPermissionSettings: () -> Unit, onDemoLaunch: (() -> Unit)?, onIntent: (AssistIntent) -> Unit) {
     val status = state.ui.statusMessage ?: when {
                     !state.ready -> "저장된 설정을 불러오고 있어요."
                     state.presentation.availability == AssistAvailability.UNSUPPORTED -> "실제 차량 SDK가 연결되지 않아 주유 안내를 제공할 수 없어요."
@@ -118,23 +110,38 @@ fun AppShell(
         else -> "ready"
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
+        if(state.assistVisible && (state.ui.screen in setOf(Screen.Refuel,Screen.Adding,Screen.Added) || state.ui.error!=null)) {
+            FuelPilotUi(state,onIntent,Modifier.fillMaxSize())
+            return@BoxWithConstraints
+        }
+        // In a split window the current recommendation is the home, not a dashboard above the useful action.
+        if (useCompactCompanion(maxWidth.value, maxHeight.value) && state.assistVisible &&
+            state.presentation.availability == AssistAvailability.READY &&
+            state.presentation.targetScreen in setOf(Screen.Recommendation, Screen.Passing)) {
+            FuelPilotUi(state, onIntent, Modifier.fillMaxSize())
+            return@BoxWithConstraints
+        }
         val wide = maxWidth >= 900.dp
         Column(
             Modifier.align(Alignment.TopCenter).widthIn(max = 1500.dp).fillMaxWidth().fillMaxHeight()
                 .verticalScroll(rememberScrollState()).padding(if (wide) 32.dp else 20.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            if (!(wide && state.presentation.availability == AssistAvailability.READY && state.ui.screen in setOf(Screen.Recommendation,Screen.Passing))) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                 PodongBadge(Modifier.size(if (wide) 112.dp else 88.dp), still = state.ui.reduceMotion || !state.ui.characterEnabled)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("뽀동이와 함께 확인해요", color = Color.White, fontSize = if (wide) 32.sp else 27.sp, lineHeight = if (wide) 40.sp else 35.sp, fontWeight = FontWeight.Bold)
                     Text("경로와 차량 연료를 비교해 필요한 순간만 알려드려요.", color = Muted, fontSize = if (wide) 22.sp else 18.sp, lineHeight = if (wide) 30.sp else 25.sp)
                 }
-                Surface(color = Color(0xFF211D17), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, WarmLine)) {
+                Surface(color = Color(0xFF705044), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, WarmLine)) {
                     Text(readyLabel, Modifier.padding(horizontal = 16.dp, vertical = 11.dp), color = Honey, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 }
             }
-            if (wide) {
+            if (wide && state.presentation.availability == AssistAvailability.READY &&
+                state.ui.screen in setOf(Screen.Recommendation, Screen.Passing)) {
+                FuelHomeOverview(state, onIntent)
+                HomeControls(state, monitoring, onMonitoringChange, onRetry, onOpenPermissionSettings, onDemoLaunch)
+            } else if (wide) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
                     HomeStatusCard(status, stateTag, state, Modifier.weight(0.95f))
                     Column(Modifier.weight(1.05f), verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -147,7 +154,7 @@ fun AppShell(
                 HomeMetricsCard(state)
                 HomeControls(state, monitoring, onMonitoringChange, onRetry, onOpenPermissionSettings, onDemoLaunch)
             }
-            Text("정차 중에만 설정을 바꿀 수 있어요. 차량 정보가 없으면 거리를 임의로 표시하지 않습니다.", color = Muted, fontSize = 17.sp, lineHeight = 24.sp)
+            Text("주행을 시작하면 간단한 주유 안내로 전환돼요.", color = Muted, fontSize = 17.sp, lineHeight = 24.sp)
         }
     }
 }
@@ -157,7 +164,7 @@ fun AppShell(
         modifier.testTag("home_state_$stateTag"),
         color = Graphite,
         shape = RoundedCornerShape(24.dp),
-        border = BorderStroke(1.dp, if (stateTag in setOf("unsupported", "error", "unavailable")) Color(0xFF735044) else Color(0xFF4A4032)),
+        border = BorderStroke(1.dp, if (stateTag in setOf("unsupported", "error", "unavailable")) Color(0xFF735044) else FuelPilotColors.Line),
         shadowElevation = 10.dp,
     ) {
         Column(Modifier.fillMaxWidth().padding(30.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
@@ -194,7 +201,7 @@ fun AppShell(
 
 @Composable private fun HomeMetricsCard(state: AssistViewState) {
     val route = state.presentation.route
-    Surface(color = Color(0xFF151310), shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, WarmLine)) {
+    Surface(color = FuelPilotColors.Surface, shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, WarmLine)) {
         Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("경로 요약", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -216,7 +223,7 @@ fun AppShell(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         monitoring?.let { monitor ->
-            Surface(color = Color(0xFF151310), shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, WarmLine)) {
+            Surface(color = FuelPilotColors.Surface, shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, WarmLine)) {
                 Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text("백그라운드 확인", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     Text(monitor.message, color = Muted, fontSize = 20.sp, lineHeight = 28.sp)
@@ -232,11 +239,11 @@ fun AppShell(
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(onClick = onRetry, modifier = Modifier.weight(1f).heightIn(min = 76.dp).testTag("retry"), shape = RoundedCornerShape(16.dp)) { Text("차량 정보 다시 확인", fontSize = 20.sp) }
-            OutlinedButton(onClick = onOpenPermissionSettings, modifier = Modifier.weight(1f).heightIn(min = 76.dp).testTag("permission_settings"), shape = RoundedCornerShape(16.dp)) { Text("권한 설정", fontSize = 20.sp) }
+            OutlinedButton(colors=ButtonDefaults.outlinedButtonColors(contentColor=Honey), onClick = onRetry, modifier = Modifier.weight(1f).heightIn(min = 76.dp).testTag("retry"), shape = RoundedCornerShape(16.dp)) { Text("차량 정보 다시 확인", fontSize = 20.sp) }
+            OutlinedButton(colors=ButtonDefaults.outlinedButtonColors(contentColor=Honey), onClick = onOpenPermissionSettings, modifier = Modifier.weight(1f).heightIn(min = 76.dp).testTag("permission_settings"), shape = RoundedCornerShape(16.dp)) { Text("권한 설정", fontSize = 20.sp) }
         }
         onDemoLaunch?.let { launch ->
-            OutlinedButton(onClick = launch, modifier = Modifier.fillMaxWidth().heightIn(min = 76.dp).testTag("demo_launch"), shape = RoundedCornerShape(16.dp)) {
+            OutlinedButton(colors=ButtonDefaults.outlinedButtonColors(contentColor=Honey), onClick = launch, modifier = Modifier.fillMaxWidth().heightIn(min = 76.dp).testTag("demo_launch"), shape = RoundedCornerShape(16.dp)) {
                 Text("시연 모드 · 예시 데이터", fontSize = 20.sp)
             }
         }
@@ -244,7 +251,7 @@ fun AppShell(
 }
 
 @Composable private fun HomeMetric(label: String, value: String, modifier: Modifier = Modifier, emphasize: Boolean = false) {
-    Surface(modifier, color = Color(0xFF100F0D), shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, WarmLine)) {
+    Surface(modifier, color = Color(0xFF503D39), shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, WarmLine)) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(label, color = Muted, fontSize = 16.sp)
             Text(value, color = if (emphasize) Honey else Color.White, fontSize = 25.sp, lineHeight = 31.sp, fontWeight = FontWeight.Bold)

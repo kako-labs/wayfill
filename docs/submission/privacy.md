@@ -11,6 +11,8 @@ This describes the intended boundary and review requirements. It is not a publis
 | Provider station catalog/price/provenance | Real provider data through server boundary | Honour provider terms, timestamps, cache/quota policy and attribution; raw catalog is not route reachability |
 | Provider credentials | Server-side provider authentication | Never deliver to Android/web/source ZIP; redact errors and logs; rotate outside source control |
 | Debug fixture data | Explicitly labelled native demonstration | Synthetic neutral values; separate store; excluded from release implementation |
+| Confirmed refuel details | Local record list/detail | Receipt time, optional liters/range, full/low flags; 90 days, at most 100 records; deletion in the parked records screen |
+| Minimal processed-event identities | Prevent repeats after record deletion | Retained separately for up to 90 days/256 IDs; disclosed in the deletion confirmation |
 | Reports/screenshots/logs | Engineering verification | Use synthetic fixtures; redact personal routes, tokens and notifications; review before upload/share |
 
 Before deployment, document the actual gateway host/operator, HTTPS trust, request fields, legal basis/consent where applicable, access controls, log fields, cache expiry, backup policy, deletion path and incident contact. These are unresolved deployment decisions. Do not promise zero server logging or a retention duration without checking the deployed system.
@@ -18,3 +20,5 @@ Before deployment, document the actual gateway host/operator, HTTPS trust, reque
 OS permission denial and monitoring stop must remain visible and actionable. Monitoring is explicit opt-in; boot/update asks the user to resume. Test removal/revocation and process-recovery behavior before describing it as verified. No analytics, advertising or secondary data use is authorized by this draft.
 
 For a public demo, use a fresh synthetic session, hide notification contents, avoid real home/work destinations and inspect the entire recording frame by frame. For source delivery, review the tracked source and the extracted ZIP; a tracked API token with an ordinary filename can defeat filename filtering. CI artifacts are retained for 14 days by the workflow; repository access permissions still govern visibility. Review retention/access before changing repository visibility or distributing artifacts.
+
+Android 클라우드 백업 및 기기 간 자동 이전은 이 버전에서 비활성화합니다. 주유 기록과 중복 방지 식별자는 해당 기기 저장소에만 유지됩니다.

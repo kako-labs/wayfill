@@ -5,6 +5,12 @@ import dev.fuelpilot.feature.assist.AssistAvailability
 import dev.fuelpilot.feature.assist.AssistViewState
 import dev.fuelpilot.ui.Motion
 import dev.fuelpilot.ui.Screen
+import dev.fuelpilot.ui.fuelRecommendationCopy
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+
+internal fun monitoringSnapshots(states: Flow<AssistViewState>, visible: Flow<Boolean>) =
+    combine(states, visible) { state, uiVisible -> state to uiVisible }
 
 fun monitoringPermissionsSatisfied(location: Boolean, notification: Boolean) = location && notification
 
@@ -19,6 +25,8 @@ data class BackgroundAdvice(
     val key: String,
     val stationId: String,
     val stationName: String,
+    val reason: String = "현재 경로의 주유 추천",
+    val routeFacts: String = "",
 )
 
 enum class RecommendationActionDecision { DISPATCH, REJECT }
@@ -39,10 +47,13 @@ fun backgroundAdvice(state: AssistViewState): BackgroundAdvice? {
     if (presentation.availability != AssistAvailability.READY ||
         presentation.targetScreen !in actionableRecommendationScreens) return null
     val key = presentation.recommendationKey?.takeIf(::validRecommendationIdentity) ?: return null
+    // A companion dismissal must not return as an alert just because the app was hidden.
+    if (key in state.persisted.exposedRecommendationKeys && state.activeRecommendationKey != key) return null
     val station = presentation.route.recommended ?: return null
     if (!validRecommendationIdentity(station.id)) return null
     val name = station.name.notificationText().takeIf { it.isNotBlank() } ?: return null
-    return BackgroundAdvice(key, station.id, name)
+    val copy = fuelRecommendationCopy(presentation.route, presentation.targetScreen == Screen.Passing)
+    return BackgroundAdvice(key, station.id, name, copy.reason, copy.routeFacts)
 }
 
 /** Revalidates immutable notification identity against the current shared runtime snapshot. */

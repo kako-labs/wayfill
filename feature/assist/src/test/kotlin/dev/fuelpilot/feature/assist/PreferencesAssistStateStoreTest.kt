@@ -30,6 +30,16 @@ class PreferencesAssistStateStoreTest {
     private val fileSystem = FakeFileSystem()
     private val now = 100L * 24 * 60 * 60 * 1000
 
+    @Test fun historyRoundTripsAndDeletionDoesNotEraseProcessedEventIds() = runTest {
+        val store=store("history")
+        val record=RefuelRecord("unicode 주유|:\n",now,8.5,400.0,true,false)
+        store.write(AssistStoredState(processedRefuels=mapOf(record.id to now),refuelHistory=listOf(record)))
+        assertEquals(listOf(record),store.read().refuelHistory)
+        store.write(store.read().copy(refuelHistory=emptyList()))
+        assertTrue(store.read().refuelHistory.isEmpty())
+        assertEquals(setOf(record.id),store.read().processedRefuels.keys)
+    }
+
     @Test fun capsToNewest256WithDeterministicTieBreaking() = runTest {
         val store = store("cap")
         store.write(AssistStoredState(processedRefuels = (0..299).reversed().associate { "id-%03d".format(it) to now }))

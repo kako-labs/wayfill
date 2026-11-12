@@ -27,6 +27,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 private val Context.assistDataStore by preferencesDataStore(name = "assist")
 
@@ -34,10 +36,11 @@ class FuelPilotApplication : Application() {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val runtime by lazy { AssistRuntime(dependencies, applicationScope) }
     val monitoring by lazy { MonitoringControl(this) }
-    var uiVisible: Boolean = false
-        private set
+    private val visible = MutableStateFlow(false)
+    val uiVisibility = visible.asStateFlow()
+    val uiVisible: Boolean get() = visible.value
     fun setUiVisible(value: Boolean) {
-        uiVisible = value; runtime.setUiVisible(value)
+        visible.value = value; runtime.setUiVisible(value)
         if (value) getSystemService(android.app.NotificationManager::class.java).cancel(MonitoringService.ADVICE_ID)
     }
 

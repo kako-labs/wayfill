@@ -28,5 +28,12 @@ class DemoIsolationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             check_apk(self.apk(b'placeholder', 'res/file'))
 
+    def test_debug_launcher_in_manifest_is_rejected_for_both_string_encodings(self):
+        for encoding in ('utf-8', 'utf-16-le'):
+            path=self.apk(b'clean release dex')
+            with zipfile.ZipFile(path,'a') as archive:
+                archive.writestr('AndroidManifest.xml','dev.fuelpilot.demo.SyntheticLauncher'.encode(encoding))
+            self.assertTrue(check_apk(path))
+
 if __name__ == '__main__':
     unittest.main()

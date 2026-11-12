@@ -1,13 +1,11 @@
 package dev.fuelpilot
 
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -86,7 +84,10 @@ class VehicleScaleUiTest {
         compose.onNodeWithTag("demo_moving").performScrollTo().performClick()
         waitForState { compose.activity.runtime.state.value.ui.motion == Motion.Moving }
         compose.onNodeWithTag("demo_parked").performScrollTo().performClick()
-        waitForState { compose.activity.runtime.state.value.ui.motion == Motion.Parked }
+        waitForState {
+            val state = compose.activity.runtime.state.value
+            state.ui.motion == Motion.Parked && state.presentation.availability == AssistAvailability.READY
+        }
         compose.onNodeWithTag("parked_recommendation").assertDoesNotExist()
         compose.onNodeWithTag("home_state_ready").assertIsDisplayed()
 
@@ -96,7 +97,10 @@ class VehicleScaleUiTest {
         waitForState { compose.activity.runtime.state.value.ui.motion == Motion.Moving }
         compose.onNodeWithTag("moving_companion").assertIsDisplayed()
         compose.onNodeWithTag("demo_parked").performScrollTo().performClick()
-        waitForState { compose.activity.runtime.state.value.ui.motion == Motion.Parked }
+        waitForState {
+            val state = compose.activity.runtime.state.value
+            state.ui.motion == Motion.Parked && state.presentation.availability == AssistAvailability.READY
+        }
         compose.onNodeWithTag("settings_screen").assertDoesNotExist()
         compose.onNodeWithTag("home_state_ready").assertIsDisplayed()
     }

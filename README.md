@@ -1,4 +1,22 @@
-# FUEL PILOT
+# FUEL PILOT · 소프트 선셋
+
+2026-11-13 제품 인계: 사용자가 확정한 석양 홈과 도로 띠 뽀동이를 웹·Android 홈/주유 안내/주유 인사/기록/설정에 적용했다. 새 64개 원본 셀의 모션과 정차·주행 구분, 기록 저장·삭제, 내비 응답과 알림 수명을 연결했다.
+
+- [지금의 실제 앱 화면 모음](docs/screen-gallery.html)
+- [직접 조작하는 웹 미리보기](web/companion-preview.html) · [새 캐릭터 모션 검토](web/sunset-motion-review.html)
+- [현재 구현·검증·실제 연결이 남은 부분](docs/PRE-PLEOS-READINESS-2026-11-13.md)
+- [다른 노트북에서 받는 순서](docs/CROSS-DEVICE-2026-11-13.md)
+
+작업 브랜치: `product/soft-sunset-prepleos-20261113`. 로컬 커밋·전달 패키지이며 원격 push/PR/배포는 하지 않았다. 실제 PLEOS/실차 검증, 운영 주유 이벤트와 공급자 좌표/도로 거리/연료 타입 연결은 남아 있다. SDK가 없으면 실제 빌드가 Unknown/Unsupported로 유지되는 것이 정상이다.
+
+## 이전 인계 기록
+
+아래 11월 10~12일 링크는 과거 기준이다. 현재 상태는 위 11월 13일 문서를 우선한다.
+
+
+**최신 화면 재설계:** [정차 홈·작은 창·연결 대기·알림 시안](web/companion-preview.html) · [Motion Care 비교와 변경 근거](docs/REDESIGN-2026-11-12.md). 실제 OS 알림 위치는 앱이 지정하지 않습니다.
+
+**내비 옆 작은 창·백그라운드 안내 후속:** [제품 기준과 연결 지점](docs/ADAPTIVE-COMPANION.md) · [실행한 검증과 미확인 항목](docs/verification-adaptive-2026-11-12.md) · [오프라인 화면 비교](web/companion-preview.html). 웹 알림은 검토용 시안이며 실제 PLEOS 알림 캡처가 아닙니다.
 
 **다른 노트북에서 이어갈 최신 전체 인계본:** [2026-11-11 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-handoff-2026-11-11) · [기기 간 인계 문서](docs/CROSS-DEVICE-2026-11-11.md). 개발 브랜치는 `integrate/podong-approved`이며 기본 `main`과 구분합니다.
 

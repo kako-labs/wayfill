@@ -16,15 +16,31 @@ class AppCoordinator(private val dependencies: AppDependencies) {
     private val engine = FuelDecisionEngine()
     private val mapper = FuelDecisionUiMapper()
 
-    fun liveIntents(): Flow<AssistIntent> = merge(
-        combine(merge(flow {
-            while (currentCoroutineContext().isActive) { emit(Unit); delay(dependencies.refreshIntervalMs) }
-        }, dependencies.refreshRequests), dependencies.store.observeMinimumReserveKm()) { _, reserve -> reserve }
-            .transformLatest { reserve -> readIntents(reserve).forEach { emit(it) } },
-        dependencies.vehicleEvents.motion.map { AssistIntent.MotionChanged(it) },
-        dependencies.vehicleEvents.refuels.map { AssistIntent.RefuelConfirmed(it) },
-        dependencies.reduceMotion.map { AssistIntent.ReduceMotionChanged(it) },
-    ).catch { failure ->
+    fun liveIntents(): Flow<AssistIntent> = channelFlow {
+        val motionRefresh = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        launch {
+            combine(merge(flow {
+                while (currentCoroutineContext().isActive) { emit(Unit); delay(dependencies.refreshIntervalMs) }
+            }, dependencies.refreshRequests, motionRefresh), dependencies.store.observeMinimumReserveKm()) { _, reserve -> reserve }
+                .transformLatest { reserve -> readIntents(reserve).forEach { emit(it) } }
+                .collect { send(it) }
+        }
+        launch {
+            dependencies.vehicleEvents.motion.distinctUntilChanged().collect { motion ->
+                // Invalidate the old surface first, then refresh its replacement without waiting for the timer.
+                send(AssistIntent.MotionChanged(motion))
+                motionRefresh.emit(Unit)
+            }
+        }
+        launch {
+            dependencies.vehicleEvents.refuels.distinctUntilChangedBy { it.id }.collect {
+                // Clear the pre-refuel recommendation before collecting a fresh energy/route snapshot.
+                send(AssistIntent.RefuelConfirmed(it))
+                motionRefresh.emit(Unit)
+            }
+        }
+        launch { dependencies.reduceMotion.collect { send(AssistIntent.ReduceMotionChanged(it)) } }
+    }.catch { failure ->
         if (failure is CancellationException) throw failure
         // A failed vehicle subscription cannot leave a last Parked snapshot actionable.
         emit(AssistIntent.MotionChanged(dev.fuelpilot.ui.Motion.Unknown))

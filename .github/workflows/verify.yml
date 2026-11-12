@@ -95,7 +95,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Enable KVM for managed emulator
+      - name: Enable KVM for dedicated review emulator
         run: |
           ls -l /dev/kvm
           sudo chmod 666 /dev/kvm
@@ -103,9 +103,20 @@ jobs:
       - name: Install Android35 build tools
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Run Android35 Compose instrumentation
-        run: |
-          chmod +x gradlew
-          python scripts/ui_tests.py
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          avd-name: fuel-pilot-review
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            adb -e shell wm size 1682x1210
+            adb -e shell wm density 160
+            chmod +x gradlew
+            python scripts/ui_tests.py --connected
       - name: Upload instrumentation reports
         if: always()
         uses: actions/upload-artifact@v4

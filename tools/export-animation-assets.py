@@ -4,11 +4,15 @@ import json, shutil, subprocess, hashlib, sys
 from PIL import Image
 
 repo=Path(__file__).resolve().parents[1]
-run=Path(sys.argv[1]) if len(sys.argv)>1 else Path('D:/hackathon-tmp/fuel-pilot-animation-work/podong-v3')
+if len(sys.argv)<2:
+    raise SystemExit('Usage: python tools/export-animation-assets.py CURATED_RUN_DIR [IMG2WEBP_EXECUTABLE]')
+run=Path(sys.argv[1]).resolve()
 out=repo/'web/assets/animation';out.mkdir(parents=True,exist_ok=True)
 native=repo/'feature/assist/src/main/res/drawable-nodpi'
 manifest=json.loads((run/'manifest.json').read_text(encoding='utf-8'))
-encoder=next(Path('D:/hackathon-tmp/fuel-pilot-animation-work/tools/libwebp').rglob('img2webp.exe'))
+encoder=sys.argv[2] if len(sys.argv)>2 else shutil.which('img2webp')
+if not encoder:
+    raise SystemExit('Provide IMG2WEBP_EXECUTABLE or add img2webp to PATH.')
 shutil.copy2(run/'sprite-sheet-alpha.png',out/'podong-atlas.png')
 shutil.copy2(out/'podong-atlas.png',native/'podong_atlas.png')
 data={'atlas':'assets/animation/podong-atlas.png','width':manifest['frame_layout']['sheetWidth'],'height':manifest['frame_layout']['sheetHeight'],'clips':{}}

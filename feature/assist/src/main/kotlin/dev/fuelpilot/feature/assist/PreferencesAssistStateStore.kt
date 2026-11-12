@@ -44,6 +44,8 @@ class PreferencesAssistStateStore(
         lastRecommendationKey = preferences[LAST_RECOMMENDATION],
         exposedRecommendationKeys = preferences[EXPOSED].orEmpty(),
         minimumReserveKm = (preferences[RESERVE] ?: 50).takeIf(::validReserveKm) ?: 50,
+        refuelHistory = preferences[HISTORY].orEmpty().mapNotNull(RefuelRecordCodec::decode)
+            .sortedWith(compareByDescending<RefuelRecord>{it.observedAtMs}.thenBy{it.id}),
     )
 
     private fun encode(state: AssistStoredState, current: Preferences): Preferences =
@@ -54,6 +56,7 @@ class PreferencesAssistStateStore(
             this[REDUCE_MOTION] = state.reduceMotion
             this[EXPOSED] = state.exposedRecommendationKeys.sorted().toSet()
             this[RESERVE] = state.minimumReserveKm
+            this[HISTORY] = state.refuelHistory.map(RefuelRecordCodec::encode).toSet()
             if (state.routeId == null) remove(ROUTE) else this[ROUTE] = state.routeId
             if (state.destinationId == null) remove(DESTINATION) else this[DESTINATION] = state.destinationId
             if (state.lastRecommendationKey == null) remove(LAST_RECOMMENDATION)
@@ -69,5 +72,6 @@ class PreferencesAssistStateStore(
         val LAST_RECOMMENDATION = stringPreferencesKey("assist.last_recommendation")
         val EXPOSED = stringSetPreferencesKey("assist.exposed_recommendations")
         val RESERVE = intPreferencesKey("assist.minimum_reserve_km")
+        val HISTORY = stringSetPreferencesKey("assist.refuel_history_v1")
     }
 }

@@ -7,11 +7,26 @@ for(const pose of ['peek','wave','cheek','wiggle','tuck']){
  const native=fs.readFileSync(path.join(root,'feature/assist/src/main/res/drawable-nodpi/podong_'+pose+'.png'));
  assert.deepEqual(web,native,'native asset mismatch: '+pose);
 }
-for(const name of ['index.html','style.css','app.js','state.js','animation-lab.html','animation-data.js','podong-animation.js','ui-gallery.html','ui-gallery.css','ui-gallery.js','product-vision.html','product-vision.css','product-vision.js','podong-v2-motion-lab.html','podong-v2-motion-lab.css','podong-v2-motion-lab.js']){
+for(const name of ['index.html','style.css','app.js','state.js','animation-lab.html','animation-data.js','podong-animation.js','ui-gallery.html','ui-gallery.css','ui-gallery.js','product-vision.html','product-vision.css','product-vision.js','podong-v2-motion-lab.html','podong-v2-motion-lab.css','podong-v2-motion-lab.js','companion-preview.html','companion-preview.css','companion-preview.js']){
  const text=fs.readFileSync(path.join(root,'web',name),'utf8');
  assert.ok(!/https?:\/\//.test(text),'offline web dependency: '+name);
 }
 assert.deepEqual(fs.readFileSync(path.join(root,'web/assets/animation/podong-atlas.png')),fs.readFileSync(path.join(root,'feature/assist/src/main/res/drawable-nodpi/podong_atlas.png')));
+assert.deepEqual(fs.readFileSync(path.join(root,'web/assets/podong-v2-calm-key.png')),fs.readFileSync(path.join(root,'feature/assist/src/main/res/drawable-nodpi/podong_v2_calm.png')),'V2 calm portrait must match on web and Android');
+for(const [web,native] of [['podong-sunset.png','podong_sunset.png'],['sunset-forecourt.png','sunset_forecourt.png']]) {
+ assert.deepEqual(fs.readFileSync(path.join(root,'web/assets/sunset',web)),fs.readFileSync(path.join(root,'feature/assist/src/main/res/drawable-nodpi',native)),'Sunset asset mismatch: '+web);
+}
+assert.ok(!/https?:\/\//.test(fs.readFileSync(path.join(root,'web/sunset-theme.css'),'utf8')),'Sunset theme must work offline');
+for(const name of ['sunset-motion-data.js','sunset-player.js','sunset-preview-state.js','sunset-pages.js','sunset-pages.css']) {
+ assert.ok(!/https?:\/\//.test(fs.readFileSync(path.join(root,'web',name),'utf8')),'Offline sunset dependency: '+name);
+}
+for(const name of ['calm','wave','full','recovery']) {
+ const web=fs.readFileSync(path.join(root,'web/assets/sunset/podong-'+name+'-sheet.png'));
+ const android=fs.readFileSync(path.join(root,'feature/assist/src/main/res/drawable-nodpi/sunset_'+name+'.png'));
+ assert.deepEqual(web,android,'Sunset sheet mismatch: '+name);
+ assert.equal(web.readUInt32BE(16),1254);assert.equal(web.readUInt32BE(20),1254);
+}
+require('./generate-sunset-motion.cjs').verify();
 const data=require('../web/animation-data.js');
 for(const [name,clip] of Object.entries(data.clips)){assert.equal(clip.frames.length,name==='calm'?8:16);assert.equal(clip.durationMs,clip.durationsMs.reduce((a,b)=>a+b));assert.ok(fs.existsSync(path.join(root,'web',clip.file)));assert.ok(clip.viewport.w>0&&clip.viewport.x+clip.viewport.w<=256);}
 console.log('Package verified: matching native/web atlas, 5 clips / 72 frames, fixed per-clip viewports, no external web URLs.');

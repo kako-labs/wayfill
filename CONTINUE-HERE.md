@@ -1,3 +1,9 @@
+# 현재 이어갈 위치 · 2026-11-13
+
+확정 디자인의 최신 로컬 브랜치는 `product/soft-sunset-prepleos-20261113`이다. [현재 제품 인계](docs/PRE-PLEOS-READINESS-2026-11-13.md), [화면 모음](docs/screen-gallery.html), [다른 기기 이동](docs/CROSS-DEVICE-2026-11-13.md)을 먼저 읽는다. 새 Git bundle/소스 ZIP을 기준으로 받는다. 원격에는 push하지 않았으므로 아래 과거 GitHub 브랜치나 Release에 이번 변경이 있다고 가정하지 않는다.
+
+---
+
 # FUEL PILOT 이어가기 · 2026-11-11
 
 **찾지 못했던 문제를 막기 위한 고정 진입점:** [전체 인계 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-handoff-2026-11-11)와 [다른 노트북 인계 문서](docs/CROSS-DEVICE-2026-11-11.md)를 먼저 확인한다. 기본 `main`은 초기 상태이며 현재 앱은 `integrate/podong-approved`에 있다.

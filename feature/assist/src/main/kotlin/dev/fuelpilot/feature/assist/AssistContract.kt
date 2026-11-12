@@ -30,6 +30,7 @@ sealed interface AssistIntent {
     data object PauseMonitoring : AssistIntent
     data class ReduceMotionChanged(val enabled: Boolean) : AssistIntent
     data object Continue : AssistIntent
+    data object ClearRefuelHistory : AssistIntent
 }
 
 sealed interface AssistEffect {
@@ -46,6 +47,8 @@ data class AssistViewState(
     val requestedScreen: Screen? = null,
     val activeRecommendationKey: String? = null,
     val assistVisible: Boolean = true,
+    /** Session-only monotonic entrance time; never stored or reconstructed on process restart. */
+    val recommendationStartedAtMs: Long? = null,
 ) {
     /** Compatibility for hosts that still call the assist surface an overlay. */
     val overlayVisible: Boolean get() = assistVisible
@@ -90,6 +93,9 @@ fun reduceAssist(
                 state.ui.motion == intent.value -> state.copy(ui = state.ui.copy(motion = intent.value))
                 else -> state.clearTransient().copy(
                     ui = state.clearTransient().ui.copy(motion = intent.value),
+                    // Do not immediately re-expose the parked advice after clearing its exposure.
+                    // Only a fresh evaluation may supply an actionable moving recommendation.
+                    presentation = unavailablePresentation(),
                     persisted = state.persisted.clearExposure(),
                 )
             }
@@ -112,7 +118,10 @@ fun reduceAssist(
             val retained = state.persisted.pruned(wallClockMs)
             val event = intent.value
             if (event.id.isNotBlank() && event.id !in retained.processedRefuels) {
-                val stored = retained.copy(processedRefuels = retained.processedRefuels + (event.id to wallClockMs)).pruned(wallClockMs)
+                val stored = retained.copy(
+                    processedRefuels = retained.processedRefuels + (event.id to wallClockMs),
+                    refuelHistory = retained.refuelHistory + event.asRecord(wallClockMs),
+                ).pruned(wallClockMs)
                 val ui = reduceFuelUi(state.ui.copy(seenIds = retained.processedRefuels.keys),
                     FuelUiEvent.RefuelConfirmed(event), monotonicClockMs)
                 next = state.copy(
@@ -173,6 +182,9 @@ fun reduceAssist(
             persisted = state.persisted.copy(reduceMotion = intent.enabled),
             ui = state.ui.copy(reduceMotion = intent.enabled, celebration = state.ui.celebration.takeUnless { intent.enabled }),
         )
+        AssistIntent.ClearRefuelHistory -> if(state.ui.motion==Motion.Parked) next=state.copy(
+            persisted=state.persisted.copy(refuelHistory=emptyList()),
+        )
         AssistIntent.Continue -> next = state.copy(
             ui = state.ui.copy(refuel = null, celebration = null),
             navigationResult = null,
@@ -180,7 +192,15 @@ fun reduceAssist(
             activeRecommendationKey = null,
         )
     }
-    return AssistTransition(resolveScreen(next), effects)
+    val resolved=resolveScreen(next)
+    val firstParkedEntrance=resolved.ui.motion==Motion.Parked && resolved.activeRecommendationKey!=null &&
+        resolved.activeRecommendationKey!=state.activeRecommendationKey &&
+        resolved.activeRecommendationKey !in state.persisted.exposedRecommendationKeys
+    return AssistTransition(resolved.copy(recommendationStartedAtMs=when {
+        firstParkedEntrance->monotonicClockMs
+        resolved.ui.motion!=Motion.Parked || resolved.activeRecommendationKey!=state.activeRecommendationKey->null
+        else->state.recommendationStartedAtMs
+    }), effects)
 }
 
 private val recommendationScreens = setOf(Screen.Recommendation, Screen.Passing)
@@ -250,6 +270,7 @@ private fun WaypointResult.errorMessage(): String? = when (this) {
 private fun AssistStoredState.clearExposure() = copy(lastRecommendationKey = null, exposedRecommendationKeys = emptySet())
 
 private fun AssistViewState.clearTransient() = copy(
+    recommendationStartedAtMs = null,
     pending = null, navigationResult = null, requestedScreen = null, activeRecommendationKey = null,
     ui = ui.copy(celebration = null, refuel = null, pendingStation = null, routeStation = null, error = null),
 )

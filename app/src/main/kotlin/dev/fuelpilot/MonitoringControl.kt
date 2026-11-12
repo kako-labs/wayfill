@@ -91,10 +91,11 @@ class MonitoringControl(private val app: FuelPilotApplication) {
         return result
     }
 
+    @SuppressLint("UseKtx") // The Boolean commit result must gate notification publication; KTX edit returns Unit.
     private fun writeAdviceRecord(records: LinkedHashMap<String, Long>, key: String, nowMs: Long): Boolean {
         records.remove(key)
         records[key] = nowMs
-        val serialized = records.entries.takeLast(MAX_ADVICE_RECORDS)
+        val serialized = records.entries.toList().takeLast(MAX_ADVICE_RECORDS)
             .joinToString("\n") { "${it.value}\t${encodeKey(it.key)}" }
         return preferences.edit().putString(ADVICE_RECORDS, serialized).commit()
     }

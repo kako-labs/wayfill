@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.fuelpilot.feature.assist.AssistAvailability
+import dev.fuelpilot.feature.assist.AssistIntent
 import dev.fuelpilot.ui.Motion
 import org.junit.After
 import org.junit.Assert.*
@@ -14,7 +15,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
-/** Production host checks: permissions and lifecycle only; never supplies simulated SDK data. */
+/** Service lifecycle harness. Only Parked is injected in tests; SDK ports remain real/Unsupported. */
 class MonitoringRuntimeTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val app get() = instrumentation.targetContext.applicationContext as FuelPilotApplication
@@ -34,6 +35,13 @@ class MonitoringRuntimeTest {
         shell("appops set $name POST_NOTIFICATION allow")
         compose.runOnIdle { app.monitoring.stop() }
         waitFor { app.runtime.state.value.ready }
+        compose.runOnIdle { app.runtime.dispatch(AssistIntent.MotionChanged(Motion.Unknown)) }
+        waitFor { app.runtime.state.value.ui.motion==Motion.Unknown }
+    }
+
+    private fun provideParkedTestState() {
+        compose.runOnIdle { app.runtime.dispatch(AssistIntent.MotionChanged(Motion.Parked)) }
+        waitFor { app.runtime.state.value.ui.motion==Motion.Parked }
     }
 
     @After fun stopAndRestoreDeviceSettings() {
@@ -44,6 +52,7 @@ class MonitoringRuntimeTest {
     }
 
     @Test fun foregroundServiceSharesRuntimeAcrossRotationAndBackground() {
+        provideParkedTestState()
         val runtime = app.runtime
         compose.runOnIdle { app.monitoring.start() }
         waitFor { app.monitoring.state.value.running && runtime.monitoringActive.value }
@@ -61,6 +70,7 @@ class MonitoringRuntimeTest {
     }
 
     @Test fun disabledLocationRejectsStart() {
+        provideParkedTestState()
         shell("cmd location set-location-enabled false")
         waitFor { !app.monitoring.locationEnabled() }
         compose.runOnIdle { app.monitoring.start() }
@@ -69,6 +79,7 @@ class MonitoringRuntimeTest {
     }
 
     @Test fun disablingLocationStopsAnAlreadyRunningServiceWithoutNewSdkData() {
+        provideParkedTestState()
         compose.runOnIdle { app.monitoring.start() }
         waitFor { app.monitoring.state.value.running && app.runtime.monitoringActive.value }
         shell("cmd location set-location-enabled false")
@@ -82,10 +93,12 @@ class MonitoringRuntimeTest {
     @Test fun unsupportedProductionHomeIsHonestAndUnknownPolicyIsDisabled() {
         waitFor { app.runtime.state.value.presentation.availability == AssistAvailability.UNSUPPORTED }
         assertEquals(Motion.Unknown, app.runtime.state.value.ui.motion)
-        compose.onNodeWithTag("nav_home").assertIsDisplayed()
-        compose.onNodeWithText("주행 가능 거리: 확인 중").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("nav_settings").performClick()
-        compose.onNodeWithText("+10km").performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithText("−10km").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("unknown_companion").assertIsDisplayed()
+        compose.onNodeWithTag("nav_home").assertDoesNotExist()
+        compose.onNodeWithTag("nav_settings").assertDoesNotExist()
+        compose.onNodeWithTag("guide_now").assertDoesNotExist()
+        compose.runOnIdle { app.monitoring.start() }
+        assertFalse(app.monitoring.requested)
+        assertFalse(app.monitoring.state.value.running)
     }
 }

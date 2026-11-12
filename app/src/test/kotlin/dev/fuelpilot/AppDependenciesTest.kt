@@ -15,6 +15,28 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppDependenciesTest {
+    @Test fun departureReadsAFreshRecommendationWithoutWaitingForThePeriodicTimer() = runTest {
+        val motionUpdates = MutableStateFlow(Motion.Parked)
+        var range = 75.0
+        val vm = start(fixture(
+            energy = object : EnergyRepository { override suspend fun readEnergy() = EnergyResult.Available(range) },
+            vehicle = object : VehicleEvents {
+                override val motion = motionUpdates
+                override val refuels = emptyFlow<RefuelEvent>()
+            },
+        ))
+        runCurrent()
+        assertEquals(75.0, vm.state.value.presentation.route.rangeKm!!, 0.0)
+        range = 70.0
+        motionUpdates.value = Motion.Moving
+        runCurrent()
+        assertEquals(Motion.Moving, vm.state.value.ui.motion)
+        assertNotNull(vm.state.value.toString(), vm.state.value.presentation.route.rangeKm)
+        assertEquals(70.0, vm.state.value.presentation.route.rangeKm!!, 0.0)
+        assertNotNull(vm.state.value.activeRecommendationKey)
+        assertNull(vm.state.value.pending)
+    }
+
     @Test fun productionStationQueryUsesTheSameOriginAndRouteAsDecisionInput() = runTest {
         var queries = 0
         val base = fixture()

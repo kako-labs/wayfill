@@ -1,1 +1,1 @@
-<resources><style name="Theme.FuelPilot" parent="android:style/Theme.Material.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:colorAccent">#176B5B</item></style></resources>
+<resources><style name="Theme.FuelPilot" parent="android:style/Theme.Material.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:colorAccent">#FFDA91</item><item name="android:windowLightStatusBar">false</item><item name="android:statusBarColor">#34272D</item><item name="android:navigationBarColor">#34272D</item></style></resources>

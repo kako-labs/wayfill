@@ -18,12 +18,12 @@ class ProductionStartupTest {
         assertNull(app.runtime.state.value.presentation.route.rangeKm)
         assertNull(app.runtime.state.value.presentation.route.recommended)
         compose.onNodeWithTag("demo_banner").assertDoesNotExist()
-        compose.onNodeWithTag("nav_settings").performClick()
-        compose.onNodeWithText("+10km").performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithText("−10km").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("unknown_companion").assertIsDisplayed()
+        compose.onNodeWithTag("nav_settings").assertDoesNotExist()
+        compose.onNodeWithTag("guide_now").assertDoesNotExist()
+        compose.onNodeWithTag("demo_launch").assertDoesNotExist()
         compose.activityRule.scenario.recreate()
-        compose.onNodeWithTag("nav_home").performClick()
+        compose.onNodeWithTag("unknown_companion").assertIsDisplayed()
         assertEquals(Motion.Unknown, app.runtime.state.value.ui.motion)
-        compose.onNodeWithTag("demo_launch").performScrollTo().assertIsDisplayed()
     }
 }

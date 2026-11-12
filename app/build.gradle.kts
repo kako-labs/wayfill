@@ -5,7 +5,7 @@ plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.and
 fun quotedBuildConfig(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r") + "\""
 android {
     namespace = "dev.fuelpilot"; compileSdk = 35
-    defaultConfig { applicationId = "dev.fuelpilot"; minSdk = 28; targetSdk = 35; versionCode = 1; versionName = "0.1.0"
+    defaultConfig { applicationId = "dev.fuelpilot"; minSdk = 28; targetSdk = 35; versionCode = 2; versionName = "0.2.0-prepleos"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "STATION_GATEWAY_ORIGIN", quotedBuildConfig(providers.gradleProperty("stationGatewayOrigin").orElse("").get()))
     }

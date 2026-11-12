@@ -17,6 +17,11 @@ def check_apk(path: Path) -> list[str]:
             for marker in FORBIDDEN:
                 if marker in contents:
                     findings.append(f'{name}: {marker.decode()}')
+        if 'AndroidManifest.xml' in archive.namelist():
+            manifest = archive.read('AndroidManifest.xml')
+            for marker in ('dev.fuelpilot.demo.', 'SyntheticLauncher', 'FUEL_PILOT_SYNTHETIC_ONLY'):
+                if marker.encode() in manifest or marker.encode('utf-16-le') in manifest:
+                    findings.append(f'AndroidManifest.xml: {marker}')
     return findings
 
 def main() -> int:
@@ -30,7 +35,7 @@ def main() -> int:
     if findings:
         print('Debug demo leaked into release:\n' + '\n'.join(findings))
         return 1
-    print('Release DEX contains no demo package or synthetic marker.')
+    print('Release DEX/manifest contains no demo package, launcher, or synthetic marker.')
     return 0
 
 if __name__ == '__main__':

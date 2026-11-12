@@ -2,8 +2,6 @@
     <string name="app_name">FUEL PILOT</string>
     <string name="notification_channel_monitoring">모니터링 상태</string>
     <string name="notification_channel_recommendations">주유 추천</string>
-    <string name="notification_recommendation_title">연료가 부족해요</string>
-    <string name="notification_recommendation_body">%1$s에 들러 주유할까요?</string>
     <string name="notification_action_guide_now">바로 안내</string>
     <string name="notification_action_later">나중에</string>
 </resources>

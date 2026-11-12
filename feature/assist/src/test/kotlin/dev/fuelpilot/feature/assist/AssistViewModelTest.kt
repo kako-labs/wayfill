@@ -471,6 +471,8 @@ class AssistViewModelTest {
         vm.dispatch(AssistIntent.MotionChanged(Motion.Moving)); runCurrent()
         assertNull(vm.state.value.pending)
         assertNull(vm.state.value.persisted.lastRecommendationKey)
+        assertNull(vm.state.value.activeRecommendationKey)
+        assertEquals(AssistAvailability.UNAVAILABLE, vm.state.value.presentation.availability)
         vm.dispatch(AssistIntent.NavigationCompleted(WaypointResult.Succeeded(old.requestId, old.stationId)))
         runCurrent()
         assertEquals(Screen.Widget, vm.state.value.ui.screen)

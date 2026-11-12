@@ -21,10 +21,12 @@ class DemoSources : EnergyRepository, LocationRepository, NavigationRepository, 
     var navigationCalls = 0
         private set
     var navigationSucceeds = true
+    var navigationDelayMs = 700L
     override val motion = MutableStateFlow(Motion.Parked)
     override val refuels = MutableSharedFlow<RefuelEvent>(extraBufferCapacity = 16)
     private val refresh = MutableSharedFlow<Unit>(extraBufferCapacity = 16)
     private var lastRefuel: RefuelEvent? = null
+    private var rangeAfterRefuel: Double? = null
     private var routeId = "demo-$sessionId-0"
 
     fun dependencies(store: AssistStateStore, reducedMotion: Boolean) = AppDependencies(
@@ -33,6 +35,7 @@ class DemoSources : EnergyRepository, LocationRepository, NavigationRepository, 
     )
 
     fun select(value: String) {
+        rangeAfterRefuel = null
         scenario = value
         routeId = "demo-$sessionId-${++sequence}"
         refresh.tryEmit(Unit)
@@ -43,6 +46,7 @@ class DemoSources : EnergyRepository, LocationRepository, NavigationRepository, 
             liters = if (variant == "small") 5.0 else 40.0, rangeKm = 550.0,
             isFull = variant != "small", wasLow = variant == "recovery")
         lastRefuel = event
+        rangeAfterRefuel = event.rangeKm
         refuels.tryEmit(event)
     }
     fun duplicate() { lastRefuel?.let { refuels.tryEmit(it) } }
@@ -51,7 +55,7 @@ class DemoSources : EnergyRepository, LocationRepository, NavigationRepository, 
         "unsupported" -> EnergyResult.Unsupported
         "unavailable" -> EnergyResult.Unavailable
         "noaction" -> EnergyResult.Available(400.0)
-        else -> EnergyResult.Available(150.0)
+        else -> EnergyResult.Available(rangeAfterRefuel ?: 150.0)
     }
     override suspend fun readLocation() = LocationResult.Available(VehicleLocation(37.5, 127.0, 5.0))
     override suspend fun readRoute() = RouteResult.Available(
@@ -69,7 +73,7 @@ class DemoSources : EnergyRepository, LocationRepository, NavigationRepository, 
     )
     override suspend fun addWaypoint(request: WaypointRequest): WaypointResult {
         navigationCalls++
-        delay(700)
+        delay(navigationDelayMs.coerceIn(0,5000))
         return if (navigationSucceeds) WaypointResult.Succeeded(request.requestId, request.stationId)
         else WaypointResult.Failed(request.requestId, request.stationId)
     }

@@ -4,6 +4,7 @@ import ai.pleos.playground.location.fused.FusedLocation
 import ai.pleos.playground.location.fused.listener.FusedLocationListener
 import ai.pleos.playground.location.fused.model.LocationData
 import android.content.Context
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.concurrent.atomic.AtomicBoolean
@@ -17,7 +18,14 @@ class PleosFusedLocationPort(context: Context) : FusedLocationPort {
     override fun hasPermission(): Boolean =
         appContext.checkSelfPermission(FUSED_LOCATION_PERMISSION) == PackageManager.PERMISSION_GRANTED
 
+    // Lint cannot follow the custom permission helper into async callbacks. Revocation is caught below;
+    // callback removal still runs best-effort after revocation so the SDK can release its subscription.
+    @SuppressLint("MissingPermission")
     override suspend fun awaitNextLocationUpdate(): FusedLocationRead = suspendCancellableCoroutine { continuation ->
+        if (!hasPermission()) {
+            continuation.resume(FusedLocationRead.Unsupported)
+            return@suspendCancellableCoroutine
+        }
         val sdk = try { FusedLocation(appContext) } catch (_: Exception) {
             continuation.resume(FusedLocationRead.Unsupported)
             return@suspendCancellableCoroutine

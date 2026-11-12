@@ -13,6 +13,7 @@ import ai.pleos.playground.navi.data.WaypointInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import android.content.Context
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.os.Build
 import kotlinx.coroutines.CancellationException
@@ -50,7 +51,10 @@ class PleosNaviHelperPort(
         }.isSuccess
     }
 
+    // These callbacks run after a custom permission gate; async revocation is caught by runSession.
+    @SuppressLint("MissingPermission")
     override suspend fun readRoute(): NaviRead<NaviRouteSnapshot?> = operations.withLock {
+        if (!hasPermission(NAVI_ROUTE_PERMISSION)) return@withLock NaviRead.Unsupported
         runWithRetries<NaviRead<NaviRouteSnapshot?>>(
             NaviRead.Unavailable, NaviRead.Unsupported, NaviRead.Unavailable,
         ) { complete, _, _ ->
@@ -92,7 +96,9 @@ class PleosNaviHelperPort(
         }
     }
 
+    @SuppressLint("MissingPermission")
     override suspend fun readWaypointCount(): NaviRead<Int> = operations.withLock {
+        if (!hasPermission(NAVI_ROUTE_PERMISSION)) return@withLock NaviRead.Unsupported
         runWithRetries<NaviRead<Int>>(
             NaviRead.Unavailable, NaviRead.Unsupported, NaviRead.Unavailable,
         ) { complete, _, _ ->
@@ -105,7 +111,9 @@ class PleosNaviHelperPort(
         }
     }
 
+    @SuppressLint("MissingPermission")
     override suspend fun addWaypoint(target: NavigationTarget, index: Int): NaviCommandStatus = operations.withLock {
+        if (!hasPermission(NAVI_ROUTE_PERMISSION) || !hasPermission(NAVI_SEARCH_PERMISSION)) return@withLock NaviCommandStatus.UNSUPPORTED
         val waypointIndex = when (index) {
             0 -> WaypointIndex.FIRST
             1 -> WaypointIndex.SECOND
@@ -144,7 +152,9 @@ class PleosNaviHelperPort(
         }
     }
 
+    @SuppressLint("MissingPermission")
     override suspend fun setDestination(target: NavigationTarget): NaviCommandStatus = operations.withLock {
+        if (!hasPermission(NAVI_ROUTE_PERMISSION) || !hasPermission(NAVI_SEARCH_PERMISSION)) return@withLock NaviCommandStatus.UNSUPPORTED
         runWithRetries<NaviCommandStatus>(
             NaviCommandStatus.TIMED_OUT,
             NaviCommandStatus.UNSUPPORTED,
@@ -284,5 +294,11 @@ class PleosNaviHelperPort(
         latitude, longitude, name, poiId, poiSubId, poiProvider,
     ).matches(target)
 
-    private companion object { const val NAVI_SERVICE_PACKAGE = "ai.pleos.playground.service.navi" }
+    private fun hasPermission(permission: String) = appContext.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+
+    private companion object {
+        const val NAVI_SERVICE_PACKAGE = "ai.pleos.playground.service.navi"
+        const val NAVI_ROUTE_PERMISSION = "pleos.car.permission.NAVI_ROUTE"
+        const val NAVI_SEARCH_PERMISSION = "pleos.car.permission.NAVI_ROUTE_SEARCH"
+    }
 }

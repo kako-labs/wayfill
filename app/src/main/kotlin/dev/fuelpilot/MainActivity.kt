@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
 internal fun monitoringRuntimePermissions(automotive: Boolean, sdkInt: Int): List<String> = buildList {
     add(Manifest.permission.ACCESS_COARSE_LOCATION)
     add(Manifest.permission.ACCESS_FINE_LOCATION)
-    if (sdkInt >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+    // A permission name is safe on older APIs; sdkInt is injectable so this builder can be tested on the JVM.
+    if (sdkInt >= 33) add("android.permission.POST_NOTIFICATIONS")
     if (automotive) add(PleosFusedLocationPort.FUSED_LOCATION_PERMISSION)
 }
