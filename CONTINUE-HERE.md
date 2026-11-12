@@ -1,6 +1,14 @@
 # 현재 이어갈 위치 · 2026-11-13
 
-확정 디자인의 최신 로컬 브랜치는 `product/soft-sunset-prepleos-20261113`이다. [현재 제품 인계](docs/PRE-PLEOS-READINESS-2026-11-13.md), [화면 모음](docs/screen-gallery.html), [다른 기기 이동](docs/CROSS-DEVICE-2026-11-13.md)을 먼저 읽는다. 새 Git bundle/소스 ZIP을 기준으로 받는다. 원격에는 push하지 않았으므로 아래 과거 GitHub 브랜치나 Release에 이번 변경이 있다고 가정하지 않는다.
+확정 디자인의 최신 GitHub 인계 브랜치는 `product/soft-sunset-prepleos-20261113`이다. [현재 제품 인계](docs/PRE-PLEOS-READINESS-2026-11-13.md), [화면 모음](docs/screen-gallery.html), [다른 기기 이동](docs/CROSS-DEVICE-2026-11-13.md)을 먼저 읽는다. [11월 13일 최신 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-soft-sunset-2026-11-13) 또는 다음 Git 명령으로 받는다. 아래 과거 브랜치·Release는 이전 기록이다.
+
+```powershell
+git clone --branch product/soft-sunset-prepleos-20261113 --single-branch https://github.com/kako-labs/fuel-pilot.git fuel-pilot-sunset
+cd fuel-pilot-sunset
+git log -2 --oneline
+```
+
+이미 다른 브랜치에서 작업 중이면 변경을 보존한 뒤 fetch하고 별도 worktree를 만드는 방법이 안전하다. 기본 main에는 이번 코드가 없다.
 
 ---
 

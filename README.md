@@ -7,7 +7,7 @@
 - [현재 구현·검증·실제 연결이 남은 부분](docs/PRE-PLEOS-READINESS-2026-11-13.md)
 - [다른 노트북에서 받는 순서](docs/CROSS-DEVICE-2026-11-13.md)
 
-작업 브랜치: `product/soft-sunset-prepleos-20261113`. 로컬 커밋·전달 패키지이며 원격 push/PR/배포는 하지 않았다. 실제 PLEOS/실차 검증, 운영 주유 이벤트와 공급자 좌표/도로 거리/연료 타입 연결은 남아 있다. SDK가 없으면 실제 빌드가 Unknown/Unsupported로 유지되는 것이 정상이다.
+작업 브랜치: `product/soft-sunset-prepleos-20261113`. GitHub 인계 브랜치이며 [최신 전체 전달 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-soft-sunset-2026-11-13)에서 APK·소스 ZIP·Git bundle·검증 기록을 받는다. 기본 `main`은 과거 초기 버전이므로 아래 명시한 브랜치를 선택한다. PR/서버 배포는 하지 않았다. 실제 PLEOS/실차 검증, 운영 주유 이벤트와 공급자 좌표/도로 거리/연료 타입 연결은 남아 있다. SDK가 없으면 실제 빌드가 Unknown/Unsupported로 유지되는 것이 정상이다.
 
 ## 이전 인계 기록
 

@@ -1,6 +1,16 @@
 # 다른 노트북에서 이어가기 · 2026-11-13
 
-현재 브랜치는 `product/soft-sunset-prepleos-20261113`이다. 이번 작업은 로컬 전달본이며 GitHub에 push하지 않았다. 과거 `main`, `integrate/podong-approved`, 11월 11일 Release에 새 결과물이 있다고 가정하지 않는다.
+현재 브랜치는 `product/soft-sunset-prepleos-20261113`이다. 사용자가 승인한 GitHub 인계 브랜치다. [11월 13일 최신 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-soft-sunset-2026-11-13)에 APK·소스 ZIP·Git bundle·검증 기록을 함께 둔다. 과거 `main`, `integrate/podong-approved`, 11월 11일 Release와 구분한다.
+
+## GitHub에서 최신 소스 받기
+
+```powershell
+git clone --branch product/soft-sunset-prepleos-20261113 --single-branch https://github.com/kako-labs/fuel-pilot.git fuel-pilot-sunset
+cd fuel-pilot-sunset
+git log -2 --oneline
+```
+
+기존 작업이 있는 폴더에서는 변경을 보존한 뒤 `git fetch origin`을 하고, 별도 폴더에 `git worktree add --detach ../fuel-pilot-sunset origin/product/soft-sunset-prepleos-20261113`으로 받을 수 있다. `git reset --hard`로 기존 변경을 지우지 않는다.
 
 ## 전달 폴더
 

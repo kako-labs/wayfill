@@ -92,3 +92,7 @@ UI와 코드 양쪽에 반영했는지:
 ## 최종 인계 검증 · 2026-11-13
 
 JVM 169 / 일반 Android instrumentation 27 / 웹 24 / 개발 도구 29 / 서버 9 통과. 건너뜀 0. debug·release unsigned·AndroidTest APK 빌드와 lint 성공. 최종 캡처를 얻기 위한 VisualReviewTest 1개 재실행도 통과했으며 27개 합계에 중복 가산하지 않는다. 최종 Android 홈/추천/요청·성공/인사/주행/기록·상세/설정 PNG를 직접 검토했다. 화면 모음 15개 이미지 로딩·확대·이동·모바일 폭을 브라우저에서 확인했다. 실제 PLEOS/실차/실공급자/원격 CI/서버 배포는 미실행. 자세한 실패 이력과 남은 연결은 PRE-PLEOS-READINESS-2026-11-13.md 참조.
+
+## GitHub 인계 게시 · 사용자 후속 승인
+
+제품 코드 기준 aebf43a 이후 변경은 수령 안내 문서뿐이다. 브랜치 `product/soft-sunset-prepleos-20261113`을 push하고 [최신 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-soft-sunset-2026-11-13)로 전체 전달본을 게시한다. 원격 새 clone의 Git 파일 해시와 Release 다운로드 체크섬을 별도 확인한다. 이전 전체 테스트 결과는 코드 변경이 없어 재사용한다. 기본 main은 변경하지 않는다.
