@@ -1,5 +1,7 @@
 # WAYFILL 팀원 PLEOS 연결 인계
 
+팀원이 코딩 AI에 바로 작업을 맡길 때는 [TEAMMATE-AI-START-PROMPT-2026-11-13.md](TEAMMATE-AI-START-PROMPT-2026-11-13.md)의 지시문을 먼저 그대로 전달한다.
+
 ## 고정 정보
 
 - 앱명: **WAYFILL**
