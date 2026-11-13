@@ -30,7 +30,7 @@ class GatewayRouteCorridorTest {
         var url = ""; var body = ""
         val result = corridor(document()) { u, b -> url = u; body = b }.measure(query) as RouteCorridorResult.Available
         assertEquals("https://example.com/v1/stations/route", url)
-        assertEquals("""{"origin":{"latitude":37.3947,"longitude":127.1112},"destination":{"latitude":37.4979,"longitude":127.0276},"fuel":"B027"}""", body)
+        assertTrue(body, Regex("""\{"origin":\{"latitude":37.3947,"longitude":127.1112},"destination":\{"latitude":37.4979,"longitude":127.0276},"fuel":"B027","corridorToken":"[A-Za-z0-9_-]{22}"}""").matches(body))
         assertEquals(listOf(station), result.snapshot.stations)
         assertTrue(result.snapshot.coverageVerified)
     }
@@ -84,21 +84,32 @@ class GatewayRouteCorridorTest {
         assertEquals(RouteCorridorResult.Unavailable(CorridorFailure.INVALID_RESPONSE), oversized.measure(query))
     }
 
-    @Test fun issuedTokenIsSentBackOnlyForTheSameTrip() = runBlocking {
+    @Test fun aRandomTripTokenIsSentFromTheFirstRequestAndKeptForTheTrip() = runBlocking {
         val bodies = mutableListOf<String>()
+        fun tokenOf(body: String) = Regex(""""corridorToken":"([A-Za-z0-9_-]{22})"""").find(body)!!.groupValues[1]
+        // A request that fails (e.g. cancelled by the next refresh) still fixed the trip token.
+        val failing = GatewayRouteCorridor(GatewayConfig("https://example.com"),
+            GatewayTransport { _, body -> bodies += body; error("timeout") }, CorridorDecoder { error("unused") }, { 1001 })
+        failing.measure(query)
+        failing.measure(query.copy(originLatitude = 37.40))
+        assertEquals(tokenOf(bodies[0]), tokenOf(bodies[1]))
+        failing.measure(query.copy(fuel = StationFuel.DIESEL))
+        assertNotEquals(tokenOf(bodies[0]), tokenOf(bodies[2]))
+        // Another client never shares a token.
+        GatewayRouteCorridor(GatewayConfig("https://example.com"),
+            GatewayTransport { _, body -> bodies += body; error("timeout") }, CorridorDecoder { error("unused") }, { 1001 }).measure(query)
+        assertNotEquals(tokenOf(bodies[0]), tokenOf(bodies[3]))
+        // A token issued by the server replaces the local one.
         val client = corridor(document()) { _, body -> bodies += body }
         client.measure(query)
-        client.measure(query.copy(originLatitude = 37.40))
-        client.measure(query.copy(fuel = StationFuel.DIESEL))
-        assertFalse(bodies[0].contains("corridorToken"))
-        assertTrue(bodies[1].endsWith(""""fuel":"B027","corridorToken":"$token"}"""))
-        assertFalse(bodies[2].contains("corridorToken"))
+        client.measure(query)
+        assertEquals(token, tokenOf(bodies.last()))
     }
 
     @Test fun navigationRemainingDistanceIsSentWhenKnown() = runBlocking {
         var body = ""
         corridor(document()) { _, b -> body = b }.measure(query.copy(navigationRemainingMeters = 23000.0))
-        assertTrue(body, body.endsWith(""""fuel":"B027","navigationRemainingMeters":23000.0}"""))
+        assertTrue(body, body.endsWith(""","navigationRemainingMeters":23000.0}"""))
     }
 
     @Test fun configDerivesBothEndpointsFromOneOrigin() {

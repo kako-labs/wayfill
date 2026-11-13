@@ -128,7 +128,7 @@ class CorridorTests(unittest.TestCase):
         token = self.corridor.measure(self.query())[1]['corridorToken']
         result = self.corridor.measure(self.query(token=token, navigation_m=straight))[1]
         self.assertEqual('DISTANCE', result['provenance']['routingPriority'])
-        self.assertNotEqual(token, result['corridorToken'])
+        self.assertEqual(token, result['corridorToken'])
         calls = len(self.kakao_calls)
         again = self.corridor.measure(self.query(token=result['corridorToken'], navigation_m=straight))[1]
         self.assertEqual(result['corridorToken'], again['corridorToken'])
@@ -183,10 +183,10 @@ class CorridorTests(unittest.TestCase):
         self.assertEqual(self.now + 30, result['expiresAtEpochSeconds'])
         status, result = self.corridor.measure(self.query(origin=offset(13000, 0), token=token))
         self.assertEqual(['S5'], [s['id'] for s in result['stations']])
-        # 900 m east of the route: a new corridor (new token) from the new origin; samples come from cache.
+        # 900 m east of the route: rebuilt from the new origin under the same trip token.
         status, result = self.corridor.measure(self.query(origin=offset(13000, 900), token=token))
         self.assertEqual(200, status)
-        self.assertNotEqual(token, result['corridorToken'])
+        self.assertEqual(token, result['corridorToken'])
         self.assertGreater(len(self.kakao_calls), kakao)
 
     def test_another_caller_cannot_reuse_or_probe_a_trip(self):
@@ -197,10 +197,34 @@ class CorridorTests(unittest.TestCase):
             status, result = self.corridor.measure(self.query(origin=offset(5000, 0), token=other))
             self.assertEqual(200, status)
             self.assertNotEqual(token, result['corridorToken'])
+            if other:
+                self.assertEqual(other, result['corridorToken'])
         base_routes = [u for u, _ in self.kakao_calls[kakao:] if 'summary=false' in u]
         self.assertEqual(2, len(base_routes))
-        # A token only unlocks its own destination and fuel.
-        self.assertNotEqual(token, self.corridor.measure(self.query(fuel='D047', token=token))[1].get('corridorToken'))
+        # A token only reuses its own destination and fuel; anything else is a new build.
+        self.corridor.measure(self.query(fuel='D047', token=token))
+        self.assertEqual(3, len([u for u, _ in self.kakao_calls[kakao:] if 'summary=false' in u]))
+
+    def test_app_chosen_token_survives_a_client_timeout_and_repeats_wait_for_one_build(self):
+        token = 'Z' * 22
+        gate = threading.Event()
+        fetch = self.routing._fetch
+        def slow(url, key, timeout, limit):
+            gate.wait(5)
+            return fetch(url, key, timeout, limit)
+        self.routing._fetch = slow
+        results = []
+        workers = [threading.Thread(target=lambda: results.append(self.corridor.measure(self.query(token=token))))
+                   for _ in range(3)]
+        for worker in workers:
+            worker.start()
+        gate.set()
+        for worker in workers:
+            worker.join()
+        self.assertEqual([200] * 3, [status for status, _ in results])
+        self.assertEqual({token}, {result['corridorToken'] for _, result in results})
+        base_routes = [u for u, _ in self.kakao_calls if 'summary=false' in u]
+        self.assertEqual(1, len(base_routes))
 
     def test_corridor_expires(self):
         token = self.corridor.measure(self.query())[1]['corridorToken']

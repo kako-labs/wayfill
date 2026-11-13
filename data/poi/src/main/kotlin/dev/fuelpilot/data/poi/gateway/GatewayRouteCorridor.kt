@@ -1,5 +1,7 @@
 package dev.fuelpilot.data.poi.gateway
 
+import java.security.SecureRandom
+import java.util.Base64
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -129,19 +131,27 @@ class GatewayRouteCorridor(
 ) : RouteCorridorSource {
     private data class Trip(val destinationLatitude: Double, val destinationLongitude: Double, val fuel: StationFuel)
 
-    /** The server reuses a corridor only for the token it issued for that trip. */
+    /**
+     * One random token per trip, sent from the first request: the gateway stores the corridor under it, so a build
+     * that outlives this request (the app refreshes every few seconds) is reused by the next one. Unguessable, so
+     * no other caller can reuse or probe this trip.
+     */
     @Volatile private var lastTrip: Pair<Trip, String>? = null
+    private val random = SecureRandom()
+
+    private fun newToken(): String = ByteArray(16).also(random::nextBytes)
+        .let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
 
     override suspend fun measure(query: RouteCorridorQuery): RouteCorridorResult {
         fun unavailable(reason: CorridorFailure) = RouteCorridorResult.Unavailable(reason)
         if (!query.isValid()) return unavailable(CorridorFailure.INVALID_QUERY)
         val endpoint = config?.routeEndpoint ?: return unavailable(CorridorFailure.UNCONFIGURED)
         val trip = Trip(query.destinationLatitude, query.destinationLongitude, query.fuel)
-        val token = lastTrip?.takeIf { it.first == trip }?.second
+        val token = lastTrip?.takeIf { it.first == trip }?.second ?: newToken().also { lastTrip = trip to it }
         // Validated finite numbers, an enum code and a pattern-checked token need no JSON string escaping.
         val body = """{"origin":{"latitude":${query.originLatitude},"longitude":${query.originLongitude}},""" +
             """"destination":{"latitude":${query.destinationLatitude},"longitude":${query.destinationLongitude}},""" +
-            """"fuel":"${query.fuel.providerCode}"""" + (token?.let { ""","corridorToken":"$it"""" } ?: "") +
+            """"fuel":"${query.fuel.providerCode}","corridorToken":"$token"""" +
             (query.navigationRemainingMeters?.let { ""","navigationRemainingMeters":$it""" } ?: "") + "}"
         try {
             val response = withTimeout(16_000) { runInterruptible(Dispatchers.IO) { transport.post(endpoint, body) } }

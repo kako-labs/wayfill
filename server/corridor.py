@@ -245,16 +245,17 @@ def sample_centres(route):
 
 
 class RouteCorridor:
-    """Corridors are private to one trip: each build returns an unguessable token, and only a request carrying
-    it (same destination and fuel, origin still on the route) reuses that corridor. Another caller cannot
-    reuse or probe someone else's trip. Provider samples (public price data per 1 km cell) are shared."""
+    """Corridors are private to one trip: they are stored under an unguessable token (chosen by the app, or issued
+    here when absent), and only a request carrying it (same destination and fuel, origin still on the route)
+    reuses that corridor. Another caller cannot reuse or probe someone else's trip. Provider samples (public price
+    data per 1 km cell) are shared."""
     def __init__(self, routing, pool, routing_quota, clock=None, workers=4, build_limiter=None):
         import time
         self.routing, self.pool, self.routing_quota = routing, pool, routing_quota
         self.build_limiter = build_limiter
         self.clock = clock or time.time
         self.workers = workers
-        self._corridors, self._samples = {}, {}
+        self._corridors, self._samples, self._token_locks = {}, {}, {}
         self._lock = threading.Lock()
 
     def measure(self, query, client=None):
@@ -269,21 +270,30 @@ class RouteCorridor:
         if not self.pool.configured:
             return error(503, 'PROVIDER_UNCONFIGURED')
         now = int(self.clock())
+        # The app picks a random token per trip and sends it from the first request, so a build that outlives
+        # the app's own timeout is still stored under that token and found by the next request. Requests with
+        # one token are serialized: a repeat waits for the build in progress instead of starting another.
+        token = token or secrets.token_urlsafe(TOKEN_BYTES)
         with self._lock:
             for stale in [k for k, c in self._corridors.items() if now - c['created'] >= CORRIDOR_TTL_S]:
                 del self._corridors[stale]
-            corridor = self._corridors.get(token) if token else None
+            if len(self._token_locks) > 4 * MAX_CORRIDORS:
+                self._token_locks = {k: v for k, v in self._token_locks.items() if k in self._corridors or v.locked()}
+            token_lock = self._token_locks.setdefault(token, threading.Lock())
         try:
-            if (corridor is None or corridor['destination'] != destination or corridor['fuel'] != fuel or
-                    corridor['route'].project(*origin)[1] > OFF_ROUTE_M or
-                    self._unhinted_mismatch(corridor, origin, navigation_m)):
-                if self.build_limiter is not None and not self.build_limiter.allow(client):
-                    return error(429, 'RATE_LIMITED')
-                corridor = self._build(origin, destination, fuel, now, navigation_m)
+            with token_lock:
                 with self._lock:
-                    self._corridors[corridor['token']] = corridor
-                    while len(self._corridors) > MAX_CORRIDORS:
-                        self._corridors.pop(next(iter(self._corridors)))
+                    corridor = self._corridors.get(token)
+                if (corridor is None or corridor['destination'] != destination or corridor['fuel'] != fuel or
+                        corridor['route'].project(*origin)[1] > OFF_ROUTE_M or
+                        self._unhinted_mismatch(corridor, origin, navigation_m)):
+                    if self.build_limiter is not None and not self.build_limiter.allow(client):
+                        return error(429, 'RATE_LIMITED')
+                    corridor = dict(self._build(origin, destination, fuel, now, navigation_m), token=token)
+                    with self._lock:
+                        self._corridors[token] = corridor
+                        while len(self._corridors) > MAX_CORRIDORS:
+                            self._corridors.pop(next(iter(self._corridors)))
         except ProviderFailure as failure:
             return error(429 if failure.reason.endswith('QUOTA_EXHAUSTED') else 503, failure.reason)
         except Exception:
