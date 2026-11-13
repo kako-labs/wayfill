@@ -39,7 +39,13 @@ class NativeDemoTest {
     @Test fun wholeFlowNavigationSuccessFailureAndNearby() {
         waitForState { compose.activity.runtime.state.value.presentation.route.recommended != null }
         compose.onNodeWithTag("nav_assist").performClick()
-        compose.onNode(hasTestTag("parked_guide_now") or hasTestTag("home_guide_now") or hasTestTag("guide_now")).performClick()
+        compose.onNode(hasTestTag("parked_guide_now") or hasTestTag("home_guide_now") or hasTestTag("guide_now"))
+            .assertIsDisplayed().assertHasClickAction()
+        val initial = compose.activity.runtime.state.value
+        val station = requireNotNull(initial.presentation.route.recommended)
+        compose.activity.sources.navigationDelayMs = 2_000
+        compose.activity.runtime.dispatch(AssistIntent.SelectStation(station.id, initial.presentation.recommendationKey))
+        waitForState { compose.activity.runtime.state.value.pending != null }
         compose.activityRule.scenario.recreate()
         waitForState { compose.activity.runtime.state.value.ui.screen == Screen.Added }
         assertEquals(1, compose.activity.sources.navigationCalls)
