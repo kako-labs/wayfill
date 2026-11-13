@@ -39,7 +39,8 @@ class GatewayTests(unittest.TestCase):
         self.assertFalse(result['provenance']['roadMetricsVerified'])
         self.assertEqual('OPINET', result['provenance']['provider'])
         args = parse_qs(urlsplit(self.calls[0][0]).query)
-        self.assertEqual(['SECRET'], args['certkey'])
+        self.assertEqual(['SECRET'], args['code'])
+        self.assertNotIn('certkey', args)
         self.assertEqual(['xml'], args['out'])
         self.assertEqual(['2'], args['sort'])
         self.assertNotIn('SECRET', json.dumps(result))
@@ -52,7 +53,7 @@ class GatewayTests(unittest.TestCase):
     def test_rejects_bounds_types_unknown_fields_and_nonfinite(self):
         for query in [dict(QUERY, radiusMeters=5001), dict(QUERY, x=float('nan')),
                       dict(QUERY, radiusMeters=True), dict(QUERY, fuel='bad'),
-                      dict(QUERY, certkey='injected'), dict(QUERY, x=-1)]:
+                      dict(QUERY, certkey='injected'), dict(QUERY, code='injected'), dict(QUERY, x=-1)]:
             self.assertEqual(400, self.gateway.discover(query)[0], query)
         self.assertEqual([], self.calls)
     def test_cache_quota_and_expiry_never_serve_stale(self):
@@ -67,7 +68,7 @@ class GatewayTests(unittest.TestCase):
         again = Gateway(self.provider, SqliteQuota(Path(self.tmp.name) / 'quota.sqlite', daily_limit=2), clock=lambda: self.now)
         self.assertEqual(429, again.discover(QUERY)[0])
     def test_provider_failure_is_sanitized_and_costs_quota(self):
-        self.payload = RuntimeError('SECRET https://example?certkey=SECRET')
+        self.payload = RuntimeError('SECRET https://example?code=SECRET')
         status, result = self.gateway.discover(QUERY)
         self.assertEqual(503, status)
         self.assertEqual('PROVIDER_UNAVAILABLE', result['reason'])

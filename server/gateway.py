@@ -52,7 +52,7 @@ def validate_query(query):
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        # Never forward certkey to another URL/host, including provider redirects.
+        # Never forward the provider key to another URL/host, including provider redirects.
         raise ProviderFailure('PROVIDER_UNAVAILABLE')
 
 
@@ -77,7 +77,9 @@ class OpinetProvider:
         return bool(self._api_key and self._api_key.strip())
 
     def discover(self, query):
-        params = dict(certkey=self._api_key, out='xml', x=query['x'], y=query['y'],
+        # The spec page names the key `certkey`, but the live service (checked 2026-11-13) returns an
+        # empty <RESULT/> for `certkey` and real rows only for `code`.
+        params = dict(code=self._api_key, out='xml', x=query['x'], y=query['y'],
                       radius=query['radiusMeters'], prodcd=query['fuel'], sort=2)
         url = 'https://www.opinet.co.kr/api/aroundAll.do?' + urllib.parse.urlencode(params)
         try:
