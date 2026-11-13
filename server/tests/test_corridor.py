@@ -178,6 +178,28 @@ class CorridorTests(unittest.TestCase):
         self.assertEqual([], self.opinet_calls)
         self.assertTrue(self.quota.consume(self.now, units=60))  # the /discover share is still there
 
+    def test_provider_calls_never_exceed_the_reservation_when_the_cache_is_evicted_mid_build(self):
+        self.corridor.measure(self.query())
+        reserved_before, calls_before = self.used(), len(self.opinet_calls)
+        consume = self.quota.consume
+
+        def consume_then_evict(*args, **kwargs):
+            granted = consume(*args, **kwargs)
+            self.corridor._samples.clear()  # another request evicts every cached sample right after reserving
+            return granted
+        self.quota.consume = consume_then_evict
+        # A different origin on the same road: some samples cached, a few new ones needed.
+        status, _ = self.corridor.measure(self.query(origin=offset(-3000, 0)))
+        self.assertEqual(200, status)
+        self.assertGreater(len(self.opinet_calls), calls_before)
+        self.assertEqual(self.used() - reserved_before, len(self.opinet_calls) - calls_before)
+
+    def used(self):
+        import sqlite3
+        with sqlite3.connect(self.quota.path) as db:
+            row = db.execute('SELECT calls FROM quota WHERE id=1').fetchone()
+        return row[0] if row else 0
+
     def test_routing_calls_are_metered(self):
         tight = SqliteQuota(Path(self.tmp.name) / 'tight-routing', daily_limit=2, ceiling=10000)
         corridor = RouteCorridor(self.routing, self.opinet, self.quota, tight, clock=lambda: self.now)

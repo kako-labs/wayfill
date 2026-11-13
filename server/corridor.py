@@ -300,13 +300,17 @@ class RouteCorridor:
             raise ProviderFailure('ROUTING_QUOTA_EXHAUSTED')
         base = self.routing.route(origin, destination, geometry=True)
         centres = sample_centres(base)
+        # Snapshot cached samples once: exactly the misses counted here are fetched, so a cache entry
+        # expiring in between can never turn into an unreserved provider call.
         with self._lock:
-            missing = sum(1 for c in centres if self._cached_sample(c, fuel, now) is None)
+            plan = [(c, self._cached_sample(c, fuel, now)) for c in centres]
+        missing = [c for c, cached in plan if cached is None]
         # Reserve the whole provider budget up front (all or nothing), keeping a share for /discover.
-        if missing and not self.quota.consume(now, units=missing, keep=DISCOVER_RESERVE):
+        if missing and not self.quota.consume(now, units=len(missing), keep=DISCOVER_RESERVE):
             raise ProviderFailure('QUOTA_EXHAUSTED')
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
-            samples = list(pool.map(lambda c: self._sample(c, fuel, now), centres))
+            fetched = dict(zip(missing, pool.map(lambda c: self._fetch_sample(c, fuel, now), missing)))
+        samples = [cached or fetched[c] for c, cached in plan]
         batches = [rows for _, rows in samples]
         if not any(batches):
             # Every sample empty is indistinguishable from a rejected key: fail closed.
@@ -343,13 +347,9 @@ class RouteCorridor:
         cached = self._samples.get((round(centre[0], 1), round(centre[1], 1), fuel))
         return cached if cached and 0 <= now - cached[0] < SAMPLE_CACHE_TTL_S else None
 
-    def _sample(self, centre, fuel, now):
-        """Quota for uncached samples was reserved by the caller."""
+    def _fetch_sample(self, centre, fuel, now):
+        """Always one provider call; the caller has already reserved quota for it."""
         key = (round(centre[0], 1), round(centre[1], 1), fuel)
-        with self._lock:
-            cached = self._cached_sample(centre, fuel, now)
-            if cached:
-                return cached
         rows = self.opinet.discover(dict(coordinateSystem='KATEC', x=centre[0], y=centre[1],
                                          radiusMeters=SEARCH_RADIUS_M, fuel=fuel), allow_empty=True)
         with self._lock:
