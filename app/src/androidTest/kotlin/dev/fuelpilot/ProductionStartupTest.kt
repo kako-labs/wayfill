@@ -14,8 +14,9 @@ class ProductionStartupTest {
 
     /**
      * Without a vehicle source (phone AVD) motion must stay Unknown and settings locked. On an automotive
-     * target the real AAOS adapter reads the gear, so motion becomes known. Either way the production
-     * build has no verified station source and must never show a recommendation or synthetic data.
+     * target the real AAOS adapter reads the gear, so motion becomes known. On a fresh target the vehicle
+     * energy permission is not granted, so even with the station gateway configured the production build
+     * stays unsupported and must never show a recommendation or synthetic data.
      */
     @Test fun realStartupStaysUnsupportedAndHonestAboutMotion() {
         val app = compose.activity.application as FuelPilotApplication

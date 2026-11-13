@@ -91,6 +91,8 @@ fun AppShell(
                     state.presentation.availability == AssistAvailability.UNSUPPORTED -> "실제 차량 SDK가 연결되지 않아 주유 안내를 제공할 수 없어요."
                     state.presentation.availability == AssistAvailability.STALE -> "최신 차량 정보가 필요해요."
                     state.presentation.availability != AssistAvailability.READY -> "차량 정보를 확인할 수 없어요."
+                    state.ui.routeStation != null -> (state.presentation.route.recommended?.takeIf { it.id == state.ui.routeStation }
+                        ?.let { "${it.name}에 들렀다 가는 경로로 안내 중이에요." } ?: "주유소에 들렀다 가는 경로로 안내 중이에요.")
                     !state.assistVisible -> "이번 경로는 중간 주유 없이 갈 수 있어요."
                     else -> "현재 경로의 주유 정보를 확인해 주세요."
                 }
@@ -108,6 +110,7 @@ fun AppShell(
         state.presentation.availability == AssistAvailability.UNAVAILABLE -> "unavailable"
         state.ui.error != null -> "error"
         state.ui.refuel != null -> "success"
+        state.ui.routeStation != null -> "on_route"
         else -> "ready"
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -182,6 +185,7 @@ fun AppShell(
                     }
                     "error" -> "확인 필요"
                     "success" -> "완료"
+                    "on_route" -> "경유지 안내 중"
                     else -> "현재 상태"
                 },
                 color = if (stateTag in setOf("unsupported", "error", "unavailable")) Color(0xFFFF9A88) else Honey,
