@@ -269,6 +269,24 @@ class CorridorTests(unittest.TestCase):
         self.assertFalse(first.consume(self.now))
         self.assertTrue(second.consume(self.now))
 
+    def test_empty_area_costs_one_probe_on_the_next_key_not_a_second_batch(self):
+        first, second, pool = self.two_key_pool(set())
+        self.empty_everywhere = True
+        corridor = RouteCorridor(self.routing, pool, self.routing_quota, clock=lambda: self.now)
+        status, result = corridor.measure(self.query())
+        self.assertEqual((503, 'PROVIDER_SCHEMA_INVALID'), (status, result['reason']))
+        batch = len(self.opinet_calls) - 1
+        self.assertGreater(batch, 1)
+        self.assertEqual(1, self.used_of(second))  # one probe only
+        self.assertTrue(first.consume(self.now))   # an empty area does not retire the key
+
+    def used_of(self, quota):
+        import sqlite3
+        from contextlib import closing
+        with closing(sqlite3.connect(quota.path)) as db:
+            row = db.execute('SELECT calls FROM quota WHERE id=1').fetchone()
+        return row[0] if row else 0
+
     def test_known_station_search_proves_empty_searches_are_real(self):
         first, _, pool = self.two_key_pool(set())
         corridor = RouteCorridor(self.routing, pool, self.routing_quota, clock=lambda: self.now)
