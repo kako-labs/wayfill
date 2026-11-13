@@ -43,7 +43,9 @@ class VisualReviewTest {
         compose.onNodeWithTag("parked_guide_now").assertIsDisplayed().assertHasClickAction()
         val navigation = compose.activity.runtime.state.value
         val station = requireNotNull(navigation.presentation.route.recommended)
-        compose.activity.runtime.dispatch(AssistIntent.SelectStation(station.id, navigation.presentation.recommendationKey))
+        compose.runOnIdle {
+            compose.activity.runtime.dispatch(AssistIntent.SelectStation(station.id, navigation.presentation.recommendationKey))
+        }
         waitFor{compose.activity.runtime.state.value.pending!=null}
         compose.onNodeWithTag("navigation_pending").assertIsDisplayed()
         capture("navigation-pending")

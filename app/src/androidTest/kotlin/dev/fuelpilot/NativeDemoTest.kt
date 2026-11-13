@@ -44,7 +44,9 @@ class NativeDemoTest {
         val initial = compose.activity.runtime.state.value
         val station = requireNotNull(initial.presentation.route.recommended)
         compose.activity.sources.navigationDelayMs = 2_000
-        compose.activity.runtime.dispatch(AssistIntent.SelectStation(station.id, initial.presentation.recommendationKey))
+        compose.runOnIdle {
+            compose.activity.runtime.dispatch(AssistIntent.SelectStation(station.id, initial.presentation.recommendationKey))
+        }
         waitForState { compose.activity.runtime.state.value.pending != null }
         compose.activityRule.scenario.recreate()
         waitForState { compose.activity.runtime.state.value.ui.screen == Screen.Added }
