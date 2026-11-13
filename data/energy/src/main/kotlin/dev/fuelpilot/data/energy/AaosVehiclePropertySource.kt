@@ -53,7 +53,7 @@ class AaosVehiclePropertySource(
             } catch (_: Exception) {
                 return@withCar VehicleSignal.Unavailable
             }
-            if (value.propertyStatus != CarPropertyValue.STATUS_AVAILABLE) VehicleSignal.Unavailable
+            if (!value.isAvailable()) VehicleSignal.Unavailable
             else VehicleSignal.Available(value.value, value.timestamp)
         }
     }
@@ -84,7 +84,7 @@ class AaosVehiclePropertySource(
         } catch (_: Exception) {
             return@withCar VehicleSignal.Unavailable
         }
-        if (value.propertyStatus != CarPropertyValue.STATUS_AVAILABLE) return@withCar VehicleSignal.Unavailable
+        if (!value.isAvailable()) return@withCar VehicleSignal.Unavailable
         val ux = readUxRestrictions(car)
         VehicleSignal.Available(
             VehicleSafetySnapshot(mapGear(value.value), ux.first, ux.second),
@@ -115,6 +115,10 @@ class AaosVehiclePropertySource(
                     throw cancelled
                 } catch (_: SecurityException) {
                     return VehicleSignal.Unsupported
+                } catch (_: LinkageError) {
+                    // The car library on the device can be older than compileSdk. Fail closed instead of
+                    // letting the Error escape and end the vehicle flow for the rest of the process.
+                    return VehicleSignal.Unsupported
                 } catch (_: Exception) {
                     if (attempt + 1 == maxConnectionAttempts) return VehicleSignal.Unavailable
                 } finally {
@@ -143,6 +147,11 @@ class AaosVehiclePropertySource(
             continuation.invokeOnCancellation { runCatching { car?.disconnect() } }
         }
     }
+
+    // getPropertyStatus() exists only from API 35. PLEOS Connect v2.1 runs Android 14, where calling it
+    // throws NoSuchMethodError. getStatus() exists on both and reports the same STATUS_* values.
+    @Suppress("DEPRECATION")
+    private fun CarPropertyValue<*>.isAvailable() = status == CarPropertyValue.STATUS_AVAILABLE
 
     private fun isAutomotive() = appContext.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)
     private fun hasPermission(permission: String) = appContext.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED

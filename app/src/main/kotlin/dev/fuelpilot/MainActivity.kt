@@ -66,4 +66,8 @@ internal fun monitoringRuntimePermissions(automotive: Boolean, sdkInt: Int): Lis
     // A permission name is safe on older APIs; sdkInt is injectable so this builder can be tested on the JVM.
     if (sdkInt >= 33) add("android.permission.POST_NOTIFICATIONS")
     if (automotive) add(PleosFusedLocationPort.FUSED_LOCATION_PERMISSION)
+    // RANGE_REMAINING needs this runtime permission on AAOS/PLEOS; without it range stays Unsupported.
+    if (automotive) add(CAR_ENERGY_PERMISSION)
 }
+
+internal const val CAR_ENERGY_PERMISSION = "android.car.permission.CAR_ENERGY"
