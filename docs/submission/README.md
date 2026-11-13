@@ -1,6 +1,8 @@
 # Submission draft — evidence must be attached before delivery
 
-This folder prepares a reviewable FUEL PILOT submission. It does not certify CI, emulator, provider, or vehicle execution. Fill in the checklist with actual logs and commit identifiers after integration.
+Confirmed submission identity: **WAYFILL · KA&KO · leader 송호현 · 2 members · general division**. Personal contact details and signatures stay outside this repository.
+
+This folder prepares a reviewable WAYFILL submission. It does not certify CI, emulator, provider, or vehicle execution. Fill in the checklist with actual logs and commit identifiers after integration.
 
 - [Proposal and scope](proposal.md)
 - [Native demo shot list](demo-shotlist.md)

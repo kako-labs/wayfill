@@ -212,14 +212,14 @@ def probe_device(adb: Adb, package: str = DEFAULT_PACKAGE) -> dict[str, object]:
         },
         "navigation": resolve_navigation(adb, current_user),
         "focus": focus.group(1) if focus else None,
-        "fuel_pilot": package_inventory(adb, package, current_user),
+        "wayfill": package_inventory(adb, package, current_user),
     }
 
 
 def build_inventory(args: argparse.Namespace) -> tuple[dict[str, object], int]:
     executable, source = find_adb(args.adb)
     inventory: dict[str, object] = {
-        "schema": "fuel-pilot-pleos-probe/v1",
+        "schema": "wayfill-pleos-probe/v1",
         "probe_mode": "read-only",
         "apply": {
             "requested": args.apply,

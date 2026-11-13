@@ -4,7 +4,7 @@
         <!-- Separate launcher, synthetic runtime and store; absent from release. Unknown production stays locked. -->
         <activity-alias android:name="dev.fuelpilot.demo.SyntheticLauncher"
             android:targetActivity="dev.fuelpilot.demo.DemoActivity" android:exported="true"
-            android:label="Fuel Pilot 시연">
+            android:label="WAYFILL 시연">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

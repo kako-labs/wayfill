@@ -1,6 +1,7 @@
 package dev.fuelpilot.feature.assist
 
 import dev.fuelpilot.data.navigation.NavigationMode
+import dev.fuelpilot.data.navigation.NavigationTarget
 import dev.fuelpilot.data.navigation.WaypointRequest
 import dev.fuelpilot.data.navigation.WaypointResult
 import dev.fuelpilot.ui.FuelRouteUi
@@ -12,7 +13,11 @@ import dev.fuelpilot.ui.Screen
 import dev.fuelpilot.ui.reduceFuelUi
 
 sealed interface AssistIntent {
-    data class PresentationChanged(val value: AssistPresentation, val minimumReserveKm: Int? = null) : AssistIntent
+    data class PresentationChanged(
+        val value: AssistPresentation,
+        val minimumReserveKm: Int? = null,
+        val navigationTargets: Map<String, NavigationTarget> = emptyMap(),
+    ) : AssistIntent
     data class RouteChanged(val routeId: String?, val destinationId: String?) : AssistIntent
     data class MotionChanged(val value: Motion) : AssistIntent
     data class RefuelConfirmed(val value: RefuelEvent) : AssistIntent
@@ -34,13 +39,20 @@ sealed interface AssistIntent {
 }
 
 sealed interface AssistEffect {
-    data class AddWaypoint(val requestId: String, val stationId: String, val mode: NavigationMode = NavigationMode.ADD_WAYPOINT, val expectedRouteId: String? = null) : AssistEffect
+    data class AddWaypoint(
+        val requestId: String,
+        val stationId: String,
+        val mode: NavigationMode = NavigationMode.ADD_WAYPOINT,
+        val expectedRouteId: String? = null,
+        val target: NavigationTarget? = null,
+    ) : AssistEffect
 }
 
 data class AssistViewState(
     val ready: Boolean = false,
     val ui: FuelUiState = FuelUiState(),
     val presentation: AssistPresentation = unavailablePresentation(),
+    val navigationTargets: Map<String, NavigationTarget> = emptyMap(),
     val persisted: AssistStoredState = AssistStoredState(),
     val pending: WaypointRequest? = null,
     val navigationResult: WaypointResult? = null,
@@ -110,6 +122,9 @@ fun reduceAssist(
                     (incoming.targetScreen == Screen.Passing && state.presentation.targetScreen != Screen.Passing))
             next = state.copy(
                 presentation = incoming,
+                navigationTargets = intent.navigationTargets.filter { (stationId, target) ->
+                    stationId == target.stationId && target.isVerifiedWgs84()
+                },
                 requestedScreen = state.requestedScreen.takeUnless { newWarning },
                 activeRecommendationKey = state.activeRecommendationKey.takeIf { it == incoming.recommendationKey },
             )
@@ -128,6 +143,7 @@ fun reduceAssist(
                     ui = ui.copy(refuel = ui.refuel.takeIf { ui.motion == Motion.Parked }),
                     persisted = stored,
                     presentation = unavailablePresentation(),
+                    navigationTargets = emptyMap(),
                     pending = null,
                     navigationResult = null,
                     requestedScreen = null,
@@ -149,9 +165,10 @@ fun reduceAssist(
                 station?.id == intent.stationId && intent.stationId.isNotBlank() && requestId.isNotBlank()
             ) {
                 val mode = if (state.persisted.routeId == null) NavigationMode.SET_DESTINATION else NavigationMode.ADD_WAYPOINT
-                val request = WaypointRequest(requestId, intent.stationId, mode, state.persisted.routeId)
+                val target = state.navigationTargets[intent.stationId]
+                val request = WaypointRequest(requestId, intent.stationId, mode, state.persisted.routeId, target)
                 next = state.copy(pending = request, navigationResult = null, requestedScreen = null)
-                effects = listOf(AssistEffect.AddWaypoint(requestId, intent.stationId, mode, request.expectedRouteId))
+                effects = listOf(AssistEffect.AddWaypoint(requestId, intent.stationId, mode, request.expectedRouteId, target))
             }
         }
         is AssistIntent.NavigationCompleted -> {
@@ -271,6 +288,7 @@ private fun AssistStoredState.clearExposure() = copy(lastRecommendationKey = nul
 
 private fun AssistViewState.clearTransient() = copy(
     recommendationStartedAtMs = null,
+    navigationTargets = emptyMap(),
     pending = null, navigationResult = null, requestedScreen = null, activeRecommendationKey = null,
     ui = ui.copy(celebration = null, refuel = null, pendingStation = null, routeStation = null, error = null),
 )

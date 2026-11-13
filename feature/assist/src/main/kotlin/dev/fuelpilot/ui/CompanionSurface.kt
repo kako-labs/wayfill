@@ -72,7 +72,7 @@ private val KoreanBoundary = Regex("(?<=[가-힣])(?=[가-힣])")
             Column(Modifier.fillMaxWidth().then(if(compact) Modifier.fillMaxHeight() else Modifier).padding(if(dense) 18.dp else 24.dp),
                 verticalArrangement=Arrangement.spacedBy(if(dense) 8.dp else 12.dp)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                    Label("FUEL PILOT",16,Modifier.weight(1f),bold=true,lines=1)
+                    Label("WAYFILL",16,Modifier.weight(1f),bold=true,lines=1)
                     Label(when(state.motion){Motion.Moving->"주행 중";Motion.Parked->"정차 중";else->"차량 확인 중"},14,color=FuelPilotColors.Gold,lines=1)
                 }
                 if(recommendation) {

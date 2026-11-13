@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 import zipfile
 
-FORBIDDEN = (b'Ldev/fuelpilot/demo/', b'FUEL_PILOT_SYNTHETIC_ONLY')
+FORBIDDEN = (b'Ldev/fuelpilot/demo/', b'WAYFILL_SYNTHETIC_ONLY')
 
 def check_apk(path: Path) -> list[str]:
     findings = []
@@ -19,7 +19,7 @@ def check_apk(path: Path) -> list[str]:
                     findings.append(f'{name}: {marker.decode()}')
         if 'AndroidManifest.xml' in archive.namelist():
             manifest = archive.read('AndroidManifest.xml')
-            for marker in ('dev.fuelpilot.demo.', 'SyntheticLauncher', 'FUEL_PILOT_SYNTHETIC_ONLY'):
+            for marker in ('dev.fuelpilot.demo.', 'SyntheticLauncher', 'WAYFILL_SYNTHETIC_ONLY'):
                 if marker.encode() in manifest or marker.encode('utf-16-le') in manifest:
                     findings.append(f'AndroidManifest.xml: {marker}')
     return findings

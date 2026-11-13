@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Merge the approved Podong UI into the existing FUEL PILOT Android architecture and connect it to deterministic decision, navigation, and persistence contracts without shipping demo data.
+**Goal:** Merge the approved Podong UI into the existing WAYFILL Android architecture and connect it to deterministic decision, navigation, and persistence contracts without shipping demo data.
 
 **Architecture:** Preserve the approved web/UI history, move the native UI into the existing `:feature:assist` module, and keep `:core:model` pure. Extend the domain result so presentation never recomputes safety, introduce explicit Unsupported data ports, then connect everything through a request-ID-based ViewModel and persistent event-deduplication store.
 

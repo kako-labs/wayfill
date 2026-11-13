@@ -1,6 +1,7 @@
 package dev.fuelpilot.data.navigation
 
 import dev.fuelpilot.model.ActiveRoute
+import dev.fuelpilot.model.NavigationTargetProvenance
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -69,15 +70,33 @@ class NavigationRepositoryTest {
         )
         val repository = PleosNavigationRepository(fake, { true }, { true })
         val missing = WaypointRequest(REQUEST_ID, STATION_ID)
-        val target = NavigationTarget(37.5, 127.0, "Station")
+        val target = target()
 
         assertTrue(repository.addWaypoint(missing) is WaypointResult.Unsupported)
         assertTrue(repository.addWaypoint(missing.copy(expectedRouteId = "navi:route-token", target = target)) is WaypointResult.Succeeded)
         assertEquals(target, fake.lastTarget)
     }
 
+    @Test fun targetForAnotherStationFailsClosedWithoutCallingSdk() = runBlocking {
+        val fake = port(
+            route = NaviRead.Available(NaviRouteSnapshot("Destination", 37.5, 127.0, 1000.0, "route-token")),
+            command = NaviCommandStatus.SUCCEEDED,
+        )
+        val repository = PleosNavigationRepository(fake, { true }, { true })
+        val request = WaypointRequest(
+            REQUEST_ID,
+            STATION_ID,
+            expectedRouteId = "navi:route-token",
+            target = target(stationId = "another-station"),
+        )
+
+        assertTrue(repository.addWaypoint(request) is WaypointResult.Unsupported)
+        assertEquals(0, fake.routeReads)
+        assertEquals(null, fake.lastTarget)
+    }
+
     @Test fun preservesCorrelationAcrossFailureAndTimeout() = runBlocking {
-        val target = NavigationTarget(37.5, 127.0, "Station")
+        val target = target()
         for (status in listOf(NaviCommandStatus.FAILED, NaviCommandStatus.TIMED_OUT, NaviCommandStatus.UNSUPPORTED)) {
             val result = PleosNavigationRepository(port(route = NaviRead.Available(null), command = status), { true }, { true })
                 .setDestination(WaypointRequest(REQUEST_ID, STATION_ID, NavigationMode.SET_DESTINATION, target = target))
@@ -87,7 +106,7 @@ class NavigationRepositoryTest {
     }
 
     @Test fun destinationAndCapabilitiesRequireBothNaviPermissions() = runBlocking {
-        val target = NavigationTarget(37.5, 127.0, "Station")
+        val target = target()
         val fake = port(route = NaviRead.Available(null), command = NaviCommandStatus.SUCCEEDED)
         val missingRead = PleosNavigationRepository(fake, { false }, { true })
         val missingSearch = PleosNavigationRepository(fake, { true }, { false })
@@ -104,7 +123,7 @@ class NavigationRepositoryTest {
     }
 
     @Test fun serviceUnsupportedMapsSeparatelyFromCommandTimeout() = runBlocking {
-        val target = NavigationTarget(37.5, 127.0, "Station")
+        val target = target()
         val unsupported = PleosNavigationRepository(port(supported = false), { true }, { true })
         val initializedButUnavailable = PleosNavigationRepository(
             port(route = NaviRead.Available(null), command = NaviCommandStatus.UNSUPPORTED), { true }, { true }
@@ -126,11 +145,11 @@ class NavigationRepositoryTest {
     }
 
     @Test fun poiIdentityPrecedesNormalizedCoordinateFallback() {
-        val identified = NavigationTarget(37.5, 127.0, "Station", poiId = "poi-1", poiProvider = "provider")
+        val identified = target(poiId = "poi-1", poiProvider = "provider")
         assertTrue(NavigationObservedTarget(0.0, 0.0, "Other", "poi-1", null, "provider").matches(identified))
         assertTrue(!NavigationObservedTarget(37.5, 127.0, "Station", "poi-1", null, "other").matches(identified))
 
-        val coordinateOnly = NavigationTarget(37.5, 127.0, "Fuel Station")
+        val coordinateOnly = target(name = "Fuel Station")
         assertTrue(NavigationObservedTarget(37.50015, 127.0, "Fuel Station Gangnam", null, null, null)
             .matches(coordinateOnly))
         assertTrue(!NavigationObservedTarget(37.50015, 127.0, "Different POI", null, null, null)
@@ -167,6 +186,21 @@ class NavigationRepositoryTest {
         command: NaviCommandStatus = NaviCommandStatus.FAILED,
         supported: Boolean = true,
     ) = FakePort(route, command, supported)
+
+    private fun target(
+        stationId: String = STATION_ID,
+        name: String = "Station",
+        poiId: String? = null,
+        poiProvider: String? = null,
+    ) = NavigationTarget(
+        stationId = stationId,
+        latitude = 37.5,
+        longitude = 127.0,
+        name = name,
+        provenance = NavigationTargetProvenance.VERIFIED_ROAD_METRICS_WGS84,
+        poiId = poiId,
+        poiProvider = poiProvider,
+    )
 
     private companion object {
         const val REQUEST_ID = "request-123"

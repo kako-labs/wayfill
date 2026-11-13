@@ -1,4 +1,4 @@
-# FUEL PILOT MVP Implementation Plan
+# WAYFILL MVP Implementation Plan
 
 > For agentic workers: REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox syntax for tracking.
 

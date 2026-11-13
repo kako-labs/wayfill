@@ -43,6 +43,7 @@ class ProductionStationsTest {
         assertEquals(OpenStatus.UNKNOWN, station.openStatus)
         assertFalse(station.businessInfoFresh)
         assertTrue(station.fuelCompatible)
+        assertEquals(verifiedTarget, station.navigationTarget)
     }
 
     @Test fun invalidOrIncompleteMetricsFailClosed() = runTest {
@@ -52,6 +53,8 @@ class ProductionStationsTest {
             listOf(metric.copy(alongRouteKm = Double.POSITIVE_INFINITY)), listOf(metric.copy(alongRouteKm = 101.0)),
             listOf(metric.copy(etaMinutes = -1)), listOf(metric.copy(detourMinutes = -1)),
             listOf(metric.copy(alongRouteKm = null)), listOf(metric.copy(detourMinutes = null)),
+            listOf(metric.copy(navigationTarget = verifiedTarget.copy(stationId = "other"))),
+            listOf(metric.copy(navigationTarget = verifiedTarget.copy(latitude = Double.NaN))),
         )
         for (rows in badLists) {
             val port = StationRoadMetrics { snapshot(it).copy(stations = rows) }
@@ -139,7 +142,15 @@ class ProductionStationsTest {
     private val rawStation = RawCatalogStation("a", "Station A", StationFuel.GASOLINE, 1700.0, coordinates, 25.0, null)
     private val catalog = RawStationCatalog(listOf(rawStation), 90, 200,
         StationProvenance("OPINET", "aroundAll", CoordinateSystem.KATEC, false, false))
-    private val metric = VerifiedStationRoadMetric("a", true, 12.5, 11.0, 20, 7)
+    private val verifiedTarget = VerifiedStationNavigationTarget(
+        stationId = "a",
+        latitude = 37.5,
+        longitude = 127.0,
+        provenance = NavigationTargetProvenance.VERIFIED_ROAD_METRICS_WGS84,
+        poiId = "verified-poi-a",
+        poiProvider = "PLEOS_NAVI",
+    )
+    private val metric = VerifiedStationRoadMetric("a", true, 12.5, 11.0, 20, 7, verifiedTarget)
     private val transform = VerifiedStationCoordinateTransform { coordinates }
     private val location = object : LocationRepository { override suspend fun readLocation() = LocationResult.Available(origin) }
     private val navigation = nav { RouteResult.Available(route) }

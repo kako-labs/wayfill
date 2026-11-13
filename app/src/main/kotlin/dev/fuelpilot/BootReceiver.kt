@@ -17,7 +17,7 @@ class BootReceiver : BroadcastReceiver() {
         MonitoringService.ensureChannels(context)
         try { context.getSystemService(NotificationManager::class.java).notify(203,
             NotificationCompat.Builder(context, MonitoringService.MONITOR_CHANNEL)
-                .setSmallIcon(R.drawable.ic_monitoring).setContentTitle("FUEL PILOT 모니터링 재개")
+                .setSmallIcon(R.drawable.ic_monitoring).setContentTitle("WAYFILL 모니터링 재개")
                 .setContentText("앱을 열고 시작을 눌러 모니터링을 재개해 주세요.")
                 .setContentIntent(MonitoringService.openApp(context)).setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setAutoCancel(true).build())
         } catch (_: SecurityException) { /* Permission revoked after the check; wait for explicit app launch. */ }

@@ -1,4 +1,4 @@
-# FUEL PILOT 앱 개발 인계 · 2026-11-11
+# WAYFILL 앱 개발 인계 · 2026-11-11
 
 현재 작업 브랜치는 `integrate/podong-approved`다. 시작은 루트 [CONTINUE-HERE.md](../CONTINUE-HERE.md). 11월 10일 태그는 승인 UI 원본 보존용이며, 최신 앱 통합 작업의 시작점으로 되돌리지 않는다.
 

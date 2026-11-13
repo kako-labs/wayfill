@@ -1,4 +1,4 @@
-# FUEL PILOT 승인 UI 통합 설계
+# WAYFILL 승인 UI 통합 설계
 
 ## 의도
 

@@ -41,7 +41,10 @@ class FuelPilotApplication : Application() {
     val uiVisible: Boolean get() = visible.value
     fun setUiVisible(value: Boolean) {
         visible.value = value; runtime.setUiVisible(value)
-        if (value) getSystemService(android.app.NotificationManager::class.java).cancel(MonitoringService.ADVICE_ID)
+        if (value) {
+            getSystemService(android.app.NotificationManager::class.java).cancel(MonitoringService.ADVICE_ID)
+            dependencies.recommendationSpeech.stop()
+        }
     }
 
     val dependencies by lazy {

@@ -72,10 +72,22 @@ class MonitoringService : Service() {
                 try {
                     manager.notify(FOREGROUND_ID, ongoing(status))
                     val advice = if (visible) null else backgroundAdvice(state)
-                    if (advice == null) manager.cancel(ADVICE_ID)
+                    if (advice == null) {
+                        manager.cancel(ADVICE_ID)
+                        speechStop?.cancel()
+                        app.dependencies.recommendationSpeech.stop()
+                    }
                     advice?.let { current ->
                         if (!app.uiVisible && app.monitoring.claimAdvice(current.key) && !app.uiVisible) {
                             manager.notify(ADVICE_ID, recommendation(current))
+                            scope.launch {
+                                app.dependencies.recommendationSpeech.speak(recommendationSpeech(current))
+                            }
+                            speechStop?.cancel()
+                            speechStop = scope.launch {
+                                delay(RECOMMENDATION_HUN_TIMEOUT_MS)
+                                app.dependencies.recommendationSpeech.stop()
+                            }
                         }
                     }
                 } catch (_: SecurityException) {
@@ -94,6 +106,7 @@ class MonitoringService : Service() {
     private var started = false
     private var collector: Job? = null
     private var watchdog: Job? = null
+    private var speechStop: Job? = null
     private fun base(channel: String) = NotificationCompat.Builder(this, channel)
         .setSmallIcon(R.drawable.ic_monitoring)
         .setLargeIcon(BitmapFactory.decodeResource(resources, dev.fuelpilot.ui.R.drawable.podong_sunset,
@@ -101,7 +114,7 @@ class MonitoringService : Service() {
         .setContentIntent(openApp(this)).setOnlyAlertOnce(true).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
     private fun ongoing(message: String): Notification {
         val stop = PendingIntent.getService(this, 2, Intent(this, MonitoringService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        return base(MONITOR_CHANNEL).setContentTitle("FUEL PILOT 모니터링")
+        return base(MONITOR_CHANNEL).setContentTitle("WAYFILL 모니터링")
             .setContentText(message).setOngoing(true).setCategory(NotificationCompat.CATEGORY_SERVICE)
             .addAction(0, "중지", stop).build()
     }
@@ -121,6 +134,8 @@ class MonitoringService : Service() {
             .build()
     }
     override fun onDestroy() {
+        app.dependencies.recommendationSpeech.stop()
+        speechStop?.cancel()
         scope.cancel(); if (started) app.runtime.setMonitoring(false)
         getSystemService(NotificationManager::class.java).cancel(ADVICE_ID)
         app.monitoring.stopped()

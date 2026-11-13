@@ -30,6 +30,27 @@ data class ActiveRoute(
     val remainingDistanceKm: Double,
 )
 
+/** Source proof carried with a WGS84 station coordinate; arbitrary coordinates are not navigation-ready. */
+enum class NavigationTargetProvenance {
+    VERIFIED_PROVIDER_WGS84,
+    VERIFIED_ROAD_METRICS_WGS84,
+}
+
+data class VerifiedStationNavigationTarget(
+    val stationId: String,
+    val latitude: Double,
+    val longitude: Double,
+    val provenance: NavigationTargetProvenance,
+    val poiId: String? = null,
+    val address: String? = null,
+    val poiSubId: String? = null,
+    val poiProvider: String? = null,
+) {
+    fun isValid(): Boolean = stationId.isNotBlank() && latitude.isFinite() && latitude in -90.0..90.0 &&
+        longitude.isFinite() && longitude in -180.0..180.0 &&
+        listOf(poiId, address, poiSubId, poiProvider).all { it == null || it.isNotBlank() }
+}
+
 data class FuelStationCandidate(
     val id: String,
     val name: String,
@@ -42,6 +63,8 @@ data class FuelStationCandidate(
     val openStatus: OpenStatus,
     val fuelCompatible: Boolean,
     val businessInfoFresh: Boolean,
+    /** Null means the station may be shown, but navigation must fail closed as Unsupported. */
+    val navigationTarget: VerifiedStationNavigationTarget? = null,
 ) {
     val effectiveOpenStatus: OpenStatus
         get() = if (businessInfoFresh) openStatus else OpenStatus.UNKNOWN

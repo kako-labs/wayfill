@@ -1,11 +1,13 @@
 # 앱 개발 세션 인계
 
+2026-11-13 최신 후속: `feature/prepleos-hardening-20261113`과 [팀원 PLEOS 연결 인계](TEAMMATE-PLEOS-HANDOFF-2026-11-13.md)를 기준으로 한다. 웹·Android는 calm + 네 가지 32포즈 시트와 공용 시간표를 사용한다. 검증된 `NavigationTarget`은 station candidate에서 `WaypointRequest`까지 보존되고 누락·불일치면 SDK 호출 전 `Unsupported`다. HUN과 음성은 같은 추천 key/station 검증을 재사용하며, 실제 PLEOS HUN·Gleo·TTS 어댑터는 팀원이 연결한다. 아래 72프레임 설명은 11월 10일 고정 태그의 역사적 인계다.
+
 2026-11-11 후속 제품 준비: 최신 `integrate/podong-approved`의 [제품 준비 기록](product-readiness-2026-11-11.md)을 먼저 읽는다. 회사 앱의 별도 세션에는 고정 UI 태그와 최신 통합 브랜치를 구분해서 적용한다. `AssistRuntime`은 Application과 서비스가 공유하며, 별도 AssistViewModel을 중복 생성하지 않는다. 새 목적지 설정/기존 경유지 추가 계약과 실제 POI 조립 경계는 최신 브랜치 기준이다.
 
 ## 다음 기기에서 그대로 전달할 문장
 
 ```text
-https://github.com/kako-labs/fuel-pilot 의 integrate/podong-approved 최신 브랜치를 받아 기존 Pleos 앱에 UI를 연결해줘. 먼저 CONTINUE-HERE.md, docs/APPROVED-BASELINE.md, docs/APP-SESSION-HANDOFF.md, docs/ANDROID-INTEGRATION.md를 읽어줘. 승인된 UI는 web/index.html, 모션은 16프레임 정차 동작 4종 + calm 8프레임이야. 현재 통합 위치인 feature/assist의 dev.fuelpilot.ui 소스·리소스·테스트를 기준으로 기존 앱의 차량·추천·내비 로직을 보존하며 Compose UI와 콜백을 연결해줘. 실제 정차/주행 신호, 안정적인 주유 이벤트 ID, seenIds 저장/복원, 내비 성공·실패 응답을 연결해줘. 시연 숫자를 운영 기본값으로 쓰지 말고 기존 지도 표면에서 허용되는 방식인지 확인해줘. 웹 데모를 단순 WebView로 감싸는 방식으로 대체하지 말고, 빌드·실제 실행·중복 이벤트·출발 중단·데이터 미수신을 확인해줘. UI 세션의 승인 표현을 보존하고 진행/남은 통합 작업은 docs/SESSION-PROGRESS.md에 기록해줘.
+최신 작업 브랜치를 받아 CONTINUE-HERE.md, docs/APPROVED-BASELINE.md, docs/APP-SESSION-HANDOFF.md, docs/ANDROID-INTEGRATION.md를 먼저 읽어줘. 현재 기준은 WAYFILL 소프트 선셋 UI와 calm + 네 가지 32포즈 공용 모션이야. feature/assist와 app의 기존 안전 계약을 보존하며 실제 PLEOS 차량 신호, 안정적인 주유 이벤트 ID, 검증된 좌표/도로 지표, NaviHelper, 시스템 HUN, Gleo/TTS를 연결해줘. NavigationTarget·추천 key·station ID를 우회하지 말고 SDK 성공 응답 전에는 성공으로 표시하지 마. 시연 숫자를 운영 기본값으로 쓰지 말고, WebView로 대체하지 말며, 빌드·기기 실행·중복 이벤트·출발 중단·Unknown/Unsupported를 확인해 docs/SESSION-PROGRESS.md에 기록해줘.
 ```
 
 ## 연결 순서

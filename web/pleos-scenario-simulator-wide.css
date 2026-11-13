@@ -1,0 +1,12 @@
+/* Low, wide vehicle surfaces need a denser compact panel than the 16:9 review frame. */
+.wide .compact-shell{padding:4.5% 6% 3.5%}
+.wide .compact-main{justify-content:flex-start;padding-top:4%;overflow:hidden}
+.wide .compact-main h2{font-size:clamp(18px,1.75vw,29px);margin:.15em 0}
+.wide .compact-main>p{font-size:clamp(8px,.7vw,12px);margin:0 0 .55em}
+.wide .compact-character{max-height:132px}
+.wide .compact-character canvas{width:29%;max-height:128px}
+.wide .station-summary{padding:4%}
+.wide .station-summary b{font-size:clamp(11px,1vw,17px)}
+.wide .compact-main .screen-actions{margin-top:7px}
+.wide .compact-main .screen-actions button{min-height:44px;padding:.55em 1em}
+.wide .compact-note{margin:5px 0 0}

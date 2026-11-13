@@ -1,6 +1,7 @@
 package dev.fuelpilot.data.navigation
 
 import dev.fuelpilot.model.ActiveRoute
+import dev.fuelpilot.model.NavigationTargetProvenance
 import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.sin
@@ -23,16 +24,19 @@ data class NavigationCapabilities(
 )
 
 data class NavigationTarget(
+    val stationId: String,
     val latitude: Double,
     val longitude: Double,
     val name: String,
+    val provenance: NavigationTargetProvenance,
     val poiId: String? = null,
     val address: String? = null,
     val poiSubId: String? = null,
     val poiProvider: String? = null,
 ) {
-    fun isVerifiedWgs84(): Boolean = latitude.isFinite() && latitude in -90.0..90.0 &&
-        longitude.isFinite() && longitude in -180.0..180.0 && name.isNotBlank()
+    fun isVerifiedWgs84(): Boolean = stationId.isNotBlank() && latitude.isFinite() && latitude in -90.0..90.0 &&
+        longitude.isFinite() && longitude in -180.0..180.0 && name.isNotBlank() &&
+        listOf(poiId, address, poiSubId, poiProvider).all { it == null || it.isNotBlank() }
 }
 
 data class NavigationObservedTarget(
@@ -201,7 +205,7 @@ class PleosNavigationRepository(
     override suspend fun addWaypoint(request: WaypointRequest): WaypointResult {
         val target = request.target
         if (!port.isSupported() || !hasRoutePermission() || !hasRouteSearchPermission() ||
-            target == null || !target.isVerifiedWgs84()
+            target == null || target.stationId != request.stationId || !target.isVerifiedWgs84()
         ) return unsupported(request)
         val route = when (val read = port.readRoute()) {
             is NaviRead.Available -> read.value
@@ -223,7 +227,7 @@ class PleosNavigationRepository(
     override suspend fun setDestination(request: WaypointRequest): WaypointResult {
         val target = request.target
         if (!port.isSupported() || !hasRoutePermission() || !hasRouteSearchPermission() ||
-            target == null || !target.isVerifiedWgs84()
+            target == null || target.stationId != request.stationId || !target.isVerifiedWgs84()
         )
             return unsupported(request)
         when (val read = port.readRoute()) {

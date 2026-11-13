@@ -1,6 +1,6 @@
 # Architecture
 
-FUEL PILOT separates pure fuel decisions from Android and Pleos adapters.
+WAYFILL separates pure fuel decisions from Android and Pleos adapters.
 
 - core:model: immutable inputs, results, policies, and the pure decision engine
 - data:energy: remaining-range source

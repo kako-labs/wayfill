@@ -31,6 +31,7 @@ data class VerifiedStationRoadMetric(
     val alongRouteKm: Double?,
     val etaMinutes: Int,
     val detourMinutes: Int?,
+    val navigationTarget: VerifiedStationNavigationTarget? = null,
 )
 
 data class VerifiedRoadMetricsSnapshot(
@@ -160,7 +161,8 @@ class ProductionStationRepository internal constructor(
                 val raw = catalogById.getValue(metric.stationId)
                 FuelStationCandidate(raw.id, raw.name, metric.roadDistanceKm, metric.alongRouteKm,
                     metric.etaMinutes, metric.detourMinutes, OpenStatus.UNKNOWN,
-                    fuelCompatible = raw.fuel == fuel, businessInfoFresh = false)
+                    fuelCompatible = raw.fuel == fuel, businessInfoFresh = false,
+                    navigationTarget = metric.navigationTarget)
             })
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -187,6 +189,8 @@ class ProductionStationRepository internal constructor(
     private fun validMetric(metric: VerifiedStationRoadMetric, route: ActiveRoute?): Boolean =
         validDistance(metric.roadDistanceKm) && metric.etaMinutes >= 0 &&
             (metric.detourMinutes == null || metric.detourMinutes >= 0) &&
+            (metric.navigationTarget == null ||
+                (metric.navigationTarget.stationId == metric.stationId && metric.navigationTarget.isValid())) &&
             if (route == null) metric.alongRouteKm == null && metric.detourMinutes == null
             else metric.alongRouteKm?.let { validDistance(it) && it <= route.remainingDistanceKm } == true &&
                 metric.detourMinutes != null

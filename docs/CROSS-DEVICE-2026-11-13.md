@@ -1,16 +1,16 @@
 # 다른 노트북에서 이어가기 · 2026-11-13
 
-현재 브랜치는 `product/soft-sunset-prepleos-20261113`이다. 사용자가 승인한 GitHub 인계 브랜치다. [11월 13일 최신 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-soft-sunset-2026-11-13)에 APK·소스 ZIP·Git bundle·검증 기록을 함께 둔다. 과거 `main`, `integrate/podong-approved`, 11월 11일 Release와 구분한다.
+현재 브랜치는 `feature/prepleos-hardening-20261113`이다. 실제 PLEOS 연결 직전의 GitHub 인계 브랜치다. [11월 13일 최신 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/wayfill-prepleos-handoff-2026-11-13)에 APK·소스 ZIP·검증 기록을 함께 둔다. 과거 `main`, `integrate/podong-approved`, `product/soft-sunset-prepleos-20261113`과 구분한다.
 
 ## GitHub에서 최신 소스 받기
 
 ```powershell
-git clone --branch product/soft-sunset-prepleos-20261113 --single-branch https://github.com/kako-labs/fuel-pilot.git fuel-pilot-sunset
-cd fuel-pilot-sunset
+git clone --branch feature/prepleos-hardening-20261113 --single-branch https://github.com/kako-labs/fuel-pilot.git wayfill
+cd wayfill
 git log -2 --oneline
 ```
 
-기존 작업이 있는 폴더에서는 변경을 보존한 뒤 `git fetch origin`을 하고, 별도 폴더에 `git worktree add --detach ../fuel-pilot-sunset origin/product/soft-sunset-prepleos-20261113`으로 받을 수 있다. `git reset --hard`로 기존 변경을 지우지 않는다.
+기존 작업이 있는 폴더에서는 변경을 보존한 뒤 `git fetch origin`을 하고, 별도 폴더에 `git worktree add --detach ../wayfill-prepleos origin/feature/prepleos-hardening-20261113`으로 받을 수 있다. `git reset --hard`로 기존 변경을 지우지 않는다.
 
 ## 전달 폴더
 
@@ -19,7 +19,7 @@ git log -2 --oneline
 Git 이력을 포함해 그대로 받으려면 전달한 bundle 파일이 있는 폴더에서:
 
 ```powershell
-git clone -b product/soft-sunset-prepleos-20261113 fuel-pilot-prepleos-20261113.bundle fuel-pilot
+git clone -b feature/prepleos-hardening-20261113 wayfill-prepleos-20261113.bundle wayfill
 cd fuel-pilot
 git log -1 --oneline
 git status --short
@@ -67,7 +67,7 @@ GitHub UI job도 dedicated AOSP API35와 같은 wm size/density를 준비하도�
 
 ## APK 실행과 실제 PLEOS 준비
 
-- debug APK는 설치·검토용 서명 빌드다. `Fuel Pilot`은 운영 경로라 SDK가 없으면 잠긴 Unknown/Unsupported 화면을 보여준다. `Fuel Pilot 시연`은 debug 전용 별도 합성 런처다.
+- debug APK는 설치·검토용 서명 빌드다. `WAYFILL`은 운영 경로라 SDK가 없으면 잠긴 Unknown/Unsupported 화면을 보여준다. `WAYFILL 시연`은 debug 전용 별도 합성 런처다.
 - release APK는 unsigned이며 설치/배포용 서명이 아니다. 시연 런처·클래스·합성 마커가 빠졌는지 검사하는 산출물이다.
 - 실제 PLEOS에서는 먼저 `scripts/pleos_probe.py --serial <대상>`로 환경을 기록한다. 운영 주유 전용 이벤트, 실제 연료 종류, 좌표 변환, 도로/우회 거리와 경로 수집 범위, 공급자 승인·키·HTTPS 주소를 연결한다. 단순 range 증가나 공급자 반경 거리를 검증된 데이터로 대신하지 않는다.
 - 정상 내비 응답/취소/오래된 알림 액션, 주행 중 창과 시스템 HUN, car-service 재시작 후 복원은 실제 대상에서 별도로 관찰한다. 소프트 선셋의 배경 주유소는 장식이며 실제 추천 주유소 사진이 아니다.

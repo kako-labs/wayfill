@@ -1,6 +1,6 @@
-# Fuel Pilot PLEOS/emulator reproduction kit
+# WAYFILL PLEOS/emulator reproduction kit
 
-This is a truthful, smaller evidence kit for Fuel Pilot. It inventories a connected Android Automotive/Pleos target
+This is a truthful, smaller evidence kit for WAYFILL. It inventories a connected Android Automotive/Pleos target
 without changing it, defines bounded scenario gates, and separates what source/tests establish from what an emulator
 or physical vehicle establishes. It does not provide a map and does not substitute synthetic data for a real adapter.
 
@@ -45,7 +45,7 @@ ADB is discovered in this order: `--adb`, `PLEOS_ADB`, `PATH`, `ANDROID_HOME`, `
 - current and available Android users;
 - registered car/vehicle services and a bounded `car_service` summary;
 - the activity resolved for a `geo:` navigation intent and current focus;
-- Fuel Pilot install/version, requested/runtime permission lines, running service evidence, and notification-channel lines.
+- WAYFILL install/version, requested/runtime permission lines, running service evidence, and notification-channel lines.
 
 Exit `0` means one target was observed. Exit `2` means adb was not found. Exit `3` means no unique ready target could
 be selected. `OBSERVED` is inventory, not proof that a scenario passed.
@@ -89,7 +89,7 @@ When a dedicated PLEOS target is available, use this order. Stop at the first fa
 
 1. Save `pleos_probe.py` JSON and record app commit/APK SHA-256, target serial alias, build fingerprint, current user,
    resolved navigation component, permissions, channels, and car-service availability.
-2. Confirm the build type. Production evidence must not show `FUEL_PILOT_SYNTHETIC_ONLY`; debug evidence must show it.
+2. Confirm the build type. Production evidence must not show `WAYFILL_SYNTHETIC_ONLY`; debug evidence must show it.
 3. Confirm whether this build's gateway supplies verified WGS84, verified road metrics, and a verified
    `NavigationTarget`. If not, expect recommendation → navigation to remain Unsupported and do not bypass the gate.
 4. Use the official Pleos Connect Virtual Console for vehicle state only when the installed console version exposes
@@ -111,12 +111,12 @@ Debug demo mode is not production evidence.
 - [ ] Run local unit/instrumentation tests before filming; do not claim a target run from them.
 - [ ] Start the debug-only demo through the app's visible debug entry or instrumentation, never by adding demo data to
       production adapters.
-- [ ] Keep the banner `FUEL_PILOT_SYNTHETIC_ONLY · 합성 데이터 시연 · 실제 차량 아님` visible at the beginning of
+- [ ] Keep the banner `WAYFILL_SYNTHETIC_ONLY · 합성 데이터 시연 · 실제 차량 아님` visible at the beginning of
       every take and in the slate/title.
 - [ ] Reset only the debug demo store when a clean take is required. Do not clear production/user data on a shared target.
 - [ ] Fixed take order: Unknown production fail-closed slate → debug Parked recommendation → Moving cancellation →
       Parked again → one refuel event → duplicate refuel suppression → navigation success/failure → no-action scenario.
-- [ ] For navigation foreground footage, use the resolved vehicle navigation app. Fuel Pilot remains a companion surface;
+- [ ] For navigation foreground footage, use the resolved vehicle navigation app. WAYFILL remains a companion surface;
       it does not render an in-app map.
 - [ ] Record exact expected UI text/action before each take; abort if the selected build differs.
 - [ ] One-shot refuel gestures stay one-shot. Do not use the web lab's repeat checkbox as production behavior.

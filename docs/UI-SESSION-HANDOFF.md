@@ -1,11 +1,13 @@
 # UI 세션 인계
 
+2026-11-13 최신 후속: 현재 제품은 WAYFILL 소프트 선셋 UI와 도로 띠 뽀동이를 사용한다. 추천·소량·충분한 주유·저연료 회복은 각각 32포즈이며 `web/sunset-motion-review.html`에서 확인한다. 주행/Unknown/모션 감소는 정지, 큰 동작은 정차에서 한 번만 재생한다. 아래 72프레임 안내는 11월 10일 고정 태그의 역사적 인계다.
+
 2026-11-11 후속 네이티브 제품 UI: 최신 통합 브랜치에 홈·설정·모니터링 제어와 debug 전용 시연 화면을 추가했다. 승인된 72프레임 아트/타이밍은 유지한다. 이 제품 UI는 고정 UI 태그 이후 변경이므로 회사 앱에 적용할 때 [제품 준비 기록](product-readiness-2026-11-11.md)과 앱 개발 세션 문서를 함께 읽는다. 네이티브 시연과 실제 차량 입력을 구분한다.
 
 ## 다음 기기에서 그대로 전달할 문장
 
 ```text
-https://github.com/kako-labs/fuel-pilot 의 podong-ui-approved-2026-11-10 태그를 기준으로 UI 작업을 이어줘. START-HERE.md, docs/APPROVED-BASELINE.md, docs/UI-SESSION-HANDOFF.md를 먼저 읽어줘. 사용자가 승인한 것은 16프레임의 큰 정차 동작 4종 + 차분한 8프레임, 총 72프레임 버전이야. web/index.html이 전체 UI 기준이고 web/animation-lab.html이 모션 비교 화면이야. 메시지마다 뽀동이를 유지하고, 주행 중에는 작고 차분하게, 정차·주유 후에는 큰 동작을 보여줘. 이 기준을 보존하면서 내가 요청하는 UI 수정만 진행하고, Android 모듈과 달라지는 사항을 docs/SESSION-PROGRESS.md에 기록해줘. 과거 8프레임 버전이나 원본 아티팩트의 오래된 UI로 되돌리지 마.
+최신 작업 브랜치의 START-HERE.md, docs/APPROVED-BASELINE.md, docs/UI-SESSION-HANDOFF.md를 먼저 읽어줘. 현재 기준은 WAYFILL 소프트 선셋 UI와 calm + 추천/소량/충분한 주유/저연료 회복 32포즈 모션이야. web/pleos-scenario-simulator.html이 상황 흐름, web/sunset-motion-review.html이 모션 비교 화면이야. 메시지마다 뽀동이를 유지하되 주행·Unknown·모션 감소에서는 정지하고, 정차 추천과 검증된 주유 이벤트에서만 한 번 크게 움직여. 웹과 Android 시트·시간표를 같이 수정하고 docs/SESSION-PROGRESS.md에 기록해줘. 과거 72프레임 또는 초기 64셀 구현으로 되돌리지 마.
 ```
 
 ## 확인할 화면

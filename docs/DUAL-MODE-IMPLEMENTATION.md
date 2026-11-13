@@ -4,7 +4,7 @@ Status: implemented in the shared working tree as of 2026-11-12. This document d
 
 ## Scope and architecture
 
-Fuel Pilot has two presentation modes backed by one decision and state pipeline:
+WAYFILL has two presentation modes backed by one decision and state pipeline:
 
 1. The in-app companion renders the full parked experience and a calm compact moving widget.
 2. The background surface publishes an Android high-priority navigation-category notification as the current HUN prototype while the app UI is hidden.

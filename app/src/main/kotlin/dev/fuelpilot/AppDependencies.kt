@@ -29,6 +29,7 @@ class AppDependencies(
     val stations: StationRepository = UnsupportedStationRepository,
     val navigation: NavigationRepository = UnsupportedNavigationRepository,
     val vehicleEvents: VehicleEvents = UnsupportedVehicleEvents,
+    val recommendationSpeech: RecommendationSpeechPort = UnsupportedRecommendationSpeechPort,
     val refreshIntervalMs: Long = 5000L,
     val navigationTimeoutMs: Long = 10_000L,
     val reduceMotion: Flow<Boolean> = emptyFlow(),

@@ -74,6 +74,24 @@ class AppDependenciesTest {
         }
     }
 
+    @Test fun recommendationWithoutVerifiedNavigationTargetFailsClosed() = runTest {
+        var calls = 0
+        val stations = object : StationRepository {
+            override suspend fun findStations() = StationResult.Available(listOf(candidate.copy(navigationTarget = null)))
+        }
+        val navigation = routePort(result = {
+            calls++
+            WaypointResult.Succeeded(it.requestId, it.stationId)
+        })
+        val vm = start(fixture(stations = stations, navigation = navigation))
+        runCurrent()
+        vm.dispatch(AssistIntent.SelectStation("a"))
+        runCurrent()
+
+        assertEquals(0, calls)
+        assertTrue(vm.state.value.navigationResult is WaypointResult.Unsupported)
+    }
+
     @Test fun nearbySelectionSetsDestinationAndDoesNotAppendAnExistingRouteWaypoint() = runTest {
         var destinations = 0; var waypoints = 0
         val vm = start(fixture(navigation = object : NavigationRepository {
@@ -81,6 +99,7 @@ class AppDependenciesTest {
             override suspend fun capabilities() = NavigationCapabilities(true,true,2,0)
             override suspend fun setDestination(request: WaypointRequest): WaypointResult {
                 destinations++; assertEquals(NavigationMode.SET_DESTINATION,request.mode)
+                assertEquals(verifiedNavigationTarget, request.target)
                 return WaypointResult.Succeeded(request.requestId,request.stationId)
             }
             override suspend fun addWaypoint(request: WaypointRequest): WaypointResult {
@@ -136,6 +155,7 @@ class AppDependenciesTest {
         assertSame(UnsupportedLocationRepository, d.location)
         assertSame(UnsupportedStationRepository, d.stations)
         assertSame(UnsupportedNavigationRepository, d.navigation)
+        assertSame(UnsupportedRecommendationSpeechPort, d.recommendationSpeech)
         assertEquals(Motion.Unknown, d.vehicleEvents.motion.first())
         val p = d.coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
         assertEquals(AssistAvailability.UNSUPPORTED, p.availability)
@@ -235,8 +255,25 @@ class AppDependenciesTest {
         override suspend fun capabilities() = NavigationCapabilities(true,true,2,0,route?.id)
     }
 
+    private val verifiedNavigationTarget = NavigationTarget(
+        stationId = "a",
+        latitude = 37.5,
+        longitude = 127.0,
+        name = "Station A",
+        provenance = NavigationTargetProvenance.VERIFIED_ROAD_METRICS_WGS84,
+        poiId = "verified-poi-a",
+        poiProvider = "PLEOS_NAVI",
+    )
     private val candidate = FuelStationCandidate("a","Station A",20.0,20.0,
-        openStatus = OpenStatus.OPEN, fuelCompatible = true, businessInfoFresh = true)
+        openStatus = OpenStatus.OPEN, fuelCompatible = true, businessInfoFresh = true,
+        navigationTarget = VerifiedStationNavigationTarget(
+            stationId = verifiedNavigationTarget.stationId,
+            latitude = verifiedNavigationTarget.latitude,
+            longitude = verifiedNavigationTarget.longitude,
+            provenance = verifiedNavigationTarget.provenance,
+            poiId = verifiedNavigationTarget.poiId,
+            poiProvider = verifiedNavigationTarget.poiProvider,
+        ))
     private class MemoryStore : AssistStateStore {
         private var state = AssistStoredState()
         override suspend fun read() = state

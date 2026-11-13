@@ -25,7 +25,7 @@ import dev.fuelpilot.feature.assist.PreferencesAssistStateStore
 import dev.fuelpilot.ui.Motion
 
 // Distinct file and runtime: never reads FuelPilotApplication.dependencies or production state.
-private val Application.syntheticDemoStore by preferencesDataStore(name = "fuel_pilot_synthetic_demo_only")
+private val Application.syntheticDemoStore by preferencesDataStore(name = "wayfill_synthetic_demo_only")
 
 class DemoSession(application: Application) : AndroidViewModel(application) {
     val sources = DemoSources()
@@ -45,7 +45,7 @@ class DemoActivity : ComponentActivity() {
             val state by runtime.state.collectAsState()
             MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFF0C46E), onPrimary = Color(0xFF171512))) {
                 Column(Modifier.fillMaxSize().background(Color(0xFF0C0B09)).safeDrawingPadding()) {
-                    Text("FUEL_PILOT_SYNTHETIC_ONLY · 합성 데이터 시연 · 실제 차량 아님",
+                    Text("WAYFILL_SYNTHETIC_ONLY · 합성 데이터 시연 · 실제 차량 아님",
                         modifier = Modifier.fillMaxWidth().background(Color(0xFF663600)).padding(8.dp).testTag("demo_banner"), color = Color.White)
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
                         for (name in listOf("recommendation", "passing", "noaction", "nearby", "stale", "unsupported", "unavailable")) {

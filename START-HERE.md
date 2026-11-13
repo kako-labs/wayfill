@@ -1,8 +1,10 @@
 # 다른 기기와 두 세션에서 이어가기
 
+> **2026-11-13 현재 작업본:** 제품명은 WAYFILL이다. 현재 제품 모션은 `web/sunset-motion-review.html`의 calm + 네 가지 32포즈 표현 모션이며, 과거 `animation-lab.html`의 72프레임은 역사 참고용이다. 실제 PLEOS 연결 전 흐름은 `web/pleos-scenario-simulator.html`, 남은 연결 경계는 `docs/PRE-PLEOS-READINESS-2026-11-13.md`, 제출 영상 구성은 `docs/WAYFILL-VIDEO-STORYBOARD.md`를 먼저 본다.
+
 **최신 전체 앱은 [2026-11-11 고정 인계 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-handoff-2026-11-11)에 있습니다. [기기 간 인계 문서](docs/CROSS-DEVICE-2026-11-11.md)의 clone 명령과 다음 세션용 문장을 사용하세요.** 아래 11월 10일 Release는 승인 UI 원본입니다.
 
-FUEL PILOT의 승인된 문구와 뽀동이 모션을 화면과 코드로 묶었습니다.
+WAYFILL의 승인된 문구와 뽀동이 모션을 화면과 코드로 묶었습니다.
 
 **최신 앱 개발은 [CONTINUE-HERE.md](CONTINUE-HERE.md)와 integrate/podong-approved 브랜치에서 이어갑니다.** 아래 고정 태그/ZIP은 11월 10일 승인 UI 원본입니다. 현재 네이티브 코드는 feature/assist로 통합됐습니다.
 

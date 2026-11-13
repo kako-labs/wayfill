@@ -1,7 +1,9 @@
 package dev.fuelpilot.feature.assist
 
 import dev.fuelpilot.data.navigation.NavigationMode
+import dev.fuelpilot.data.navigation.NavigationTarget
 import dev.fuelpilot.data.navigation.WaypointResult
+import dev.fuelpilot.model.NavigationTargetProvenance
 import dev.fuelpilot.ui.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -142,6 +144,30 @@ class AssistViewModelTest {
         runCurrent()
         assertEquals(1, effects.size)
         assertEquals(Screen.Adding, vm.state.value.ui.screen)
+    }
+
+    @Test fun verifiedNavigationTargetSurvivesPresentationSelectionAndEffect() = runTest {
+        val target = NavigationTarget(
+            stationId = "station",
+            latitude = 37.5,
+            longitude = 127.0,
+            name = "Station",
+            provenance = NavigationTargetProvenance.VERIFIED_ROAD_METRICS_WGS84,
+            poiId = "verified-poi",
+        )
+        val vm = model()
+        val effects = mutableListOf<AssistEffect.AddWaypoint>()
+        backgroundScope.launch { vm.effects.collect { effects += it as AssistEffect.AddWaypoint } }
+        runCurrent()
+        vm.dispatch(AssistIntent.RouteChanged("route", "destination"))
+        vm.dispatch(AssistIntent.MotionChanged(Motion.Parked))
+        vm.dispatch(AssistIntent.PresentationChanged(recommendation(), navigationTargets = mapOf("station" to target)))
+        runCurrent()
+        vm.dispatch(AssistIntent.SelectStation("station"))
+        runCurrent()
+
+        assertEquals(target, vm.state.value.pending?.target)
+        assertEquals(target, effects.single().target)
     }
 
     @Test fun movingRecommendationIsCompactAndCanEmitOneCorrelatedWaypointEffect() = runTest {

@@ -1,6 +1,6 @@
-# FUEL PILOT proposal — draft
+# WAYFILL proposal — draft
 
-FUEL PILOT helps a driver understand when fuel may be insufficient for the trip and choose a refuelling stop with a small, persistent companion. The intended order is reason, candidate station, action. Navigation rendering belongs to the vehicle navigation app; FUEL PILOT does not add an in-app map.
+WAYFILL helps a driver understand when fuel may be insufficient for the trip and choose a refuelling stop with a small, persistent companion. The intended order is reason, candidate station, action. Navigation rendering belongs to the vehicle navigation app; WAYFILL does not add an in-app map.
 
 ## Product scope and evidence
 

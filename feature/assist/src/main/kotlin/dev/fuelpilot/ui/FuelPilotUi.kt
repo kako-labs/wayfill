@@ -257,7 +257,7 @@ private fun FuelPilotContent(
                                 }
                             }
                         }
-                        Screen.LongDrive -> VehicleLayout(wideParked, { PodongIntro("여행 준비 완료!", calm = !playfulCharacter) }) {
+                        Screen.LongDrive -> VehicleLayout(wideParked, { PodongIntro("여행 준비 완료!", calm = true) }) {
                             Panel(showIdentity = false, modifier = Modifier.testTag("long_drive_status")) {
                                 val enough = valid(route.rangeKm)?.let { r -> valid(route.destinationKm)?.let { d -> r >= d } } == true
                                 StatusRow("경로 분석 완료", "출발 전")
@@ -325,7 +325,7 @@ private fun FuelPilotContent(
         AdaptiveStatus.Refuel -> "주유 완료를 확인했어요"
         else -> "정차 중에 자세히 볼 수 있어요"
     }
-    VehicleLayout(wide, { PodongIntro(intro, calm = !characterPresentation(state).playful) }) {
+    VehicleLayout(wide, { PodongIntro(intro, calm = true) }) {
         Panel(showIdentity = false, modifier = Modifier.testTag("state_${model.status.name.lowercase(Locale.ROOT)}")) {
             StatusRow(
                 label = when (model.status) {

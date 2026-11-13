@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded Fuel Pilot PLEOS scenario driver; status is the read-only default."""
+"""Bounded WAYFILL PLEOS scenario driver; status is the read-only default."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ SCENARIOS = {
 
 def evidence(status: str, scenario: str, **values: object) -> dict[str, object]:
     result: dict[str, object] = {
-        "schema": "fuel-pilot-pleos-e2e/v1",
+        "schema": "wayfill-pleos-e2e/v1",
         "captured_at_utc": datetime.now(timezone.utc).isoformat(),
         "scenario": scenario,
         "status": status,
@@ -124,7 +124,7 @@ def run_debug(args: argparse.Namespace, adb: pleos_probe.Adb, probe: dict[str, o
     output = pleos_probe.text_of(result)
     passed = result.returncode == 0 and "OK (1 test)" in output and "FAILURES!!!" not in output
     return evidence("PASS_DEBUG_SYNTHETIC" if passed else "FAIL_DEBUG_SYNTHETIC", args.scenario,
-                    test=test, label="FUEL_PILOT_SYNTHETIC_ONLY · not production evidence", output=output[-8000:])
+                    test=test, label="WAYFILL_SYNTHETIC_ONLY · not production evidence", output=output[-8000:])
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

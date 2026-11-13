@@ -22,7 +22,7 @@ class DemoIsolationTest(unittest.TestCase):
         self.assertTrue(check_apk(self.apk(b'Ldev/fuelpilot/demo/DemoActivity;', 'classes2.dex')))
 
     def test_synthetic_marker_is_rejected(self):
-        self.assertTrue(check_apk(self.apk(b'FUEL_PILOT_SYNTHETIC_ONLY')))
+        self.assertTrue(check_apk(self.apk(b'WAYFILL_SYNTHETIC_ONLY')))
 
     def test_apk_without_dex_fails_closed(self):
         with self.assertRaises(ValueError):

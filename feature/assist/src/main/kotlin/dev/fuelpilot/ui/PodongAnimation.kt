@@ -2,6 +2,7 @@ package dev.fuelpilot.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -30,27 +31,37 @@ internal fun spriteFrame(name: String, elapsedMs: Long, calmLoop: Boolean = fals
     val still=LocalPodongStill.current
     val shown=if(still)"calm" else name
     val clip=SunsetMotion.clips.getValue(shown)
-    val sheet=when(clip.sheet){"wave"->R.drawable.sunset_wave;"full"->R.drawable.sunset_full;"recovery"->R.drawable.sunset_recovery;else->R.drawable.sunset_calm}
+    val sheet=when(clip.sheet){"recommend"->R.drawable.sunset_recommend;"small"->R.drawable.sunset_small;"full"->R.drawable.sunset_full;"recovery"->R.drawable.sunset_recovery;else->R.drawable.sunset_calm}
     val atlas=ImageBitmap.imageResource(sheet)
     val start=remember(name,startedAtMs){startedAtMs?:System.nanoTime()/1_000_000L}
     var frame by remember(name,startedAtMs,still){mutableIntStateOf(0)}
+    var nextFrame by remember(name,startedAtMs,still){mutableIntStateOf(0)}
+    var blend by remember(name,startedAtMs,still){mutableFloatStateOf(0f)}
     val finish by rememberUpdatedState(onDone)
     LaunchedEffect(name,startedAtMs,still,durationMs) {
         if(still){if(name!="calm")finish?.invoke();return@LaunchedEffect}
         val deadline=durationMs?:clip.durationMs
         while(true){
             val elapsed=(System.nanoTime()/1_000_000L-start).coerceAtLeast(0)
-            frame=SunsetMotion.frame(shown,elapsed)
+            val transition=SunsetMotion.transition(shown,elapsed)
+            frame=transition.index;nextFrame=transition.nextIndex;blend=transition.blend
             if(shown!="calm" && elapsed>=deadline){finish?.invoke();break}
-            delay(SunsetMotion.nextDelay(shown,elapsed,deadline))
+            val rest=shown=="calm"&&frame==0&&blend==0f
+            if(rest)delay((SunsetMotion.nextDelay(shown,elapsed,deadline)-45L).coerceAtLeast(16L))
+            else withFrameNanos { }
         }
     }
     Canvas(modifier.semantics{contentDescription="안내하는 뽀동이"}) {
-        val cell=clip.frames[frame]
-        val col=cell%4;val row=cell/4
-        val x=col*atlas.width/4;val y=row*atlas.height/4
-        val w=(col+1)*atlas.width/4-x;val h=(row+1)*atlas.height/4-y
         val side=size.minDimension.toInt()
-        drawImage(atlas,IntOffset(x,y),IntSize(w,h),IntOffset((size.width.toInt()-side)/2,(size.height.toInt()-side)/2),IntSize(side,side))
+        val destination=IntOffset((size.width.toInt()-side)/2,(size.height.toInt()-side)/2)
+        drawSunsetCell(atlas,clip.frames[frame],clip.columns,clip.rows,destination,side)
+        if(blend>0f)drawSunsetCell(atlas,clip.frames[nextFrame],clip.columns,clip.rows,destination,side,blend)
     }
+}
+
+private fun DrawScope.drawSunsetCell(atlas:ImageBitmap,cell:Int,columns:Int,rows:Int,destination:IntOffset,side:Int,alpha:Float=1f) {
+    val col=cell%columns;val row=cell/columns
+    val x=col*atlas.width/columns;val y=row*atlas.height/rows
+    val w=(col+1)*atlas.width/columns-x;val h=(row+1)*atlas.height/rows-y
+    drawImage(atlas,IntOffset(x,y),IntSize(w,h),destination,IntSize(side,side),alpha=alpha)
 }

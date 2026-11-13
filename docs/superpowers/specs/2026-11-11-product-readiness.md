@@ -1,4 +1,4 @@
-# FUEL PILOT product readiness
+# WAYFILL product readiness
 
 The user approved completing all gaps identified against Motion Care. Preserve the approved 72-frame mascot and warm graphite/gold UI. Continue on integrate/podong-approved from f7b576f; no main merge.
 

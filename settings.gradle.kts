@@ -12,7 +12,7 @@ dependencyResolutionManagement {
         }
     }
 }
-rootProject.name = "FuelPilot"
+rootProject.name = "WAYFILL"
 include(
     ":app",
     ":core:model",

@@ -14,6 +14,7 @@ class RecommendationActionReceiver : BroadcastReceiver() {
         context.getSystemService(NotificationManager::class.java).cancel(MonitoringService.ADVICE_ID)
         val action = RecommendationNotificationAction.parse(context, intent) ?: return
         val app = context.applicationContext as? FuelPilotApplication ?: return
+        app.dependencies.recommendationSpeech.stop()
 
         val environmentValid = runCatching {
             app.monitoring.requested &&

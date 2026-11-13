@@ -225,7 +225,7 @@ def handler_for(gateway):
 def main():
     # Only the server reads this environment variable; never put it in app config.
     provider = OpinetProvider(os.environ.get('OPINET_API_KEY', ''))
-    quota = SqliteQuota(Path(os.environ.get('FUEL_PILOT_QUOTA_DB', 'opinet-quota.sqlite')))
+    quota = SqliteQuota(Path(os.environ.get('WAYFILL_QUOTA_DB', 'opinet-quota.sqlite')))
     HTTPServer(('127.0.0.1', 8787), handler_for(Gateway(provider, quota))).serve_forever()
 
 

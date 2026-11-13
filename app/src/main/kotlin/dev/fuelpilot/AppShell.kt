@@ -53,7 +53,7 @@ fun AppShell(
       SunsetBackdrop(Modifier.matchParentSize())
       Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal=28.dp,vertical=18.dp),verticalAlignment=Alignment.CenterVertically) {
-            Text("FUEL PILOT",Modifier.weight(1f),color=FuelPilotColors.Text,fontSize=28.sp,fontWeight=FontWeight.ExtraBold)
+            Text("WAYFILL",Modifier.weight(1f),color=FuelPilotColors.Text,fontSize=28.sp,fontWeight=FontWeight.ExtraBold)
             Surface(color=Color(0x88624743),shape=RoundedCornerShape(99.dp),border=BorderStroke(1.dp,WarmLine)) {
                 Text("정차 중",Modifier.padding(horizontal=24.dp,vertical=12.dp),color=FuelPilotColors.Text,fontSize=20.sp)
             }

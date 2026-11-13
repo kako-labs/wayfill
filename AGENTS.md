@@ -1,4 +1,4 @@
-# FUEL PILOT Agent Guide
+# WAYFILL Agent Guide
 
 ## Product architecture
 

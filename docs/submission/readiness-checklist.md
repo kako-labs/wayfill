@@ -29,7 +29,8 @@ Status starts **pending**. Check a box only after attaching evidence for the exa
 
 ## Approval, attribution and keys
 
-- [ ] Team/product naming, artwork use and submission/publication scope approved by the owner.
+- [x] Submission identity approved: WAYFILL, KA&KO, leader 송호현, 2 members, general division (2026-11-13).
+- [ ] Artwork use and submission/publication scope approved by the owner.
 - [ ] Confirm provider terms, source attribution wording, cache retention and display requirements before live use. Do not infer permission from an API sample.
 - [ ] Confirm vehicle SDK distribution and demo-recording permissions; no SDK binary in source delivery.
 - [ ] Inventory third-party dependencies/licenses and the AI-generated companion assets; retain applicable notices and [asset QA notes](../../web/assets/animation/QA-NOTES.md).

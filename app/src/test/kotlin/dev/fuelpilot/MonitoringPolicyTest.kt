@@ -60,6 +60,34 @@ class MonitoringPolicyTest {
         assertEquals("3km 앞 · 경로 +1분", advice.routeFacts)
     }
 
+    @Test fun speechUsesTheSameAdviceIdentityAndFactsAsTheHun() {
+        val state = recommendationState()
+        val advice = backgroundAdvice(state)!!
+        val speech = recommendationSpeech(advice)
+        assertEquals("recommendation-1", speech.recommendationKey)
+        assertEquals("3km 앞 · 경로 +1분. Station One에서 주유가 필요해요. 안내할까요?", speech.text)
+        assertEquals("ko-KR", speech.localeTag)
+        assertEquals(
+            RecommendationVoiceCommand(
+                RecommendationActionKind.GUIDE_NOW,
+                speech.recommendationKey,
+                advice.stationId,
+            ),
+            recommendationVoiceCommand(
+                state,
+                RecommendationActionKind.GUIDE_NOW,
+                speech.recommendationKey,
+                advice.stationId,
+            ),
+        )
+        assertNull(recommendationVoiceCommand(
+            state,
+            RecommendationActionKind.LATER,
+            "stale-recommendation",
+            advice.stationId,
+        ))
+    }
+
     @Test fun adviceIsCreatedForFreshParkedOrMovingRecommendationButNotUnknown() {
         val valid = recommendationState()
         assertEquals(BackgroundAdvice("recommendation-1", "station-1", "Station One", routeFacts = "3km 앞 · 경로 +1분"), backgroundAdvice(valid))

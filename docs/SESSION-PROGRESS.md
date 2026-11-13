@@ -4,7 +4,7 @@
 
 사용자가 잠든 동안 설계·구현·일반 Android 검증을 맡겼다. 새 64개 셀의 동작을 네이티브/웹에 연결하고 홈·안내 추천을 공유하며 주유/내비 상태와 2열 설정을 정리했다. 확인된 주유 기록의 90일/100건 저장·상세·삭제·실패 처리를 추가했다. 삭제와 중복 방지 정보를 분리하고 백업/기기 전송 제외 규칙을 넣었다. 주유 직후 재평가, 같은 추천의 인사 재시작 억제, debug 시연 런처와 release 격리도 다뤘다.
 
-현재 브랜치는 `product/soft-sunset-prepleos-20261113`이며 원격 push는 하지 않는다. 실제 구현·검증·남은 실제 SDK/공급자 연결은 [최신 인계](PRE-PLEOS-READINESS-2026-11-13.md)를, 사용자가 볼 화면은 [갤러리](screen-gallery.html)를 기준으로 한다. 아래 날짜 기록의 테스트 숫자와 정지 자산 한계는 각 시점의 역사다.
+현재 브랜치는 `feature/prepleos-hardening-20261113`이다. 팀원용 연결 순서는 [TEAMMATE-PLEOS-HANDOFF-2026-11-13.md](TEAMMATE-PLEOS-HANDOFF-2026-11-13.md), 실제 구현·검증·남은 SDK/공급자 연결은 [최신 인계](PRE-PLEOS-READINESS-2026-11-13.md), 사용자가 볼 화면은 [갤러리](screen-gallery.html)를 기준으로 한다. 아래 날짜 기록의 테스트 숫자와 과거 자산 한계는 각 시점의 역사다.
 
 ## 2026-11-12 소프트 선셋 선택 후 구현
 
@@ -20,7 +20,7 @@
 
 ## 2026-11-12 내비 옆 작은 창·백그라운드 안내 후속
 
-`94d0c7d`에서 `ui/adaptive-companion-20261112` 브랜치를 만들었다. Motion Care 통합 기록의 공통 근거·차량 터치 크기·긴 문구·실제 화면 검토를 Fuel Pilot에 적용했다. 작은 앱 창의 추천 이유/주유소/거리/행동을 별도 행으로 배치하고, 짧은 창은 가로 버튼, 좁은 창은 세로 버튼을 쓴다. 앱과 알림은 `FuelRecommendationCopy`를 공유하고, 앱 숨김도 독립적으로 관찰한다. 미룬 추천이 앱을 숨겼다는 이유로 재노출되지 않게 했다.
+`94d0c7d`에서 `ui/adaptive-companion-20261112` 브랜치를 만들었다. Motion Care 통합 기록의 공통 근거·차량 터치 크기·긴 문구·실제 화면 검토를 WAYFILL에 적용했다. 작은 앱 창의 추천 이유/주유소/거리/행동을 별도 행으로 배치하고, 짧은 창은 가로 버튼, 좁은 창은 세로 버튼을 쓴다. 앱과 알림은 `FuelRecommendationCopy`를 공유하고, 앱 숨김도 독립적으로 관찰한다. 미룬 추천이 앱을 숨겼다는 이유로 재노출되지 않게 했다.
 
 출발 시 남아 있던 정차 추천이 즉시 재노출되는 reducer 실패를 수정하고, 차량 상태 변화가 새 평가를 즉시 요청하도록 coordinator를 보완했다. 새 주행 평가를 기다리는 동안 이전 요청/추천을 재사용하지 않는다. 컴파일되지 않았던 헤더 수신자·알림 기록 처리, 테스트의 잘못된 import, SDK 권한 lint와 사용하지 않는 알림 문구도 수정했다. SDK 포트에서 권한을 다시 확인하고 비동기 권한 회수는 기존 Unsupported/예외 처리로 이어진다.
 
@@ -76,7 +76,7 @@ UI와 코드 양쪽에 반영했는지:
 
 ### Motion Care 원본 확인 후 V2 방향 보강
 
-사용자가 제공한 ZIP의 HTML과 실제 차량 캡처를 확인했다. 큰 히어로 장면, 상태/환경/설정 카드, 고정 하단 내비게이션, 일관된 깊이와 아이콘 체계를 Fuel Pilot의 주유 판단 흐름에 맞게 번역해 `web/product-vision.html`을 추가했다. 이 화면은 자체 지도를 만들지 않고 정차 홈에서 경로 판단과 추천 근거를 보여주는 제품 시안이다.
+사용자가 제공한 ZIP의 HTML과 실제 차량 캡처를 확인했다. 큰 히어로 장면, 상태/환경/설정 카드, 고정 하단 내비게이션, 일관된 깊이와 아이콘 체계를 WAYFILL의 주유 판단 흐름에 맞게 번역해 `web/product-vision.html`을 추가했다. 이 화면은 자체 지도를 만들지 않고 정차 홈에서 경로 판단과 추천 근거를 보여주는 제품 시안이다.
 
 팀원 최초 뽀동이 시안과 기존 운영 이미지를 참고해 built-in imagegen으로 `web/assets/podong-v2-master-concept.png`를 만들었다. 더 낮고 말랑한 몸, 안정된 양발, 작은 손발, 부드러운 젤리·클레이 재질을 적용했다. 아직 운영 72프레임 아틀라스는 교체하지 않았으며, 외형 승인 뒤 5개 클립/72프레임을 웹과 Android에 함께 전환한다. 상세 기준은 `docs/PODONG-V2-DIRECTION.md`에 기록했다.
 
@@ -96,3 +96,33 @@ JVM 169 / 일반 Android instrumentation 27 / 웹 24 / 개발 도구 29 / 서버
 ## GitHub 인계 게시 · 사용자 후속 승인
 
 제품 코드 기준 aebf43a 이후 변경은 수령 안내 문서뿐이다. 브랜치 `product/soft-sunset-prepleos-20261113`을 push하고 [최신 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-soft-sunset-2026-11-13)로 전체 전달본을 게시한다. 원격 새 clone의 Git 파일 해시와 Release 다운로드 체크섬을 별도 확인한다. 이전 전체 테스트 결과는 코드 변경이 없어 재사용한다. 기본 main은 변경하지 않는다.
+
+## 2026-11-13 PLEOS 상황 흐름 시뮬레이터
+
+실제 PLEOS 연결은 팀원이 맡고, 연결 전 사용자 검토를 위해 `web/pleos-scenario-simulator.html`을 추가했다. 정차 홈→모니터링 시작→주행 중 앱 숨김→두 행동 HUN→내비 응답 대기→내비 옆 작은 창→도착→주유 인사, 그리고 연결 미확인 차단 상태를 직접 눌러볼 수 있다. 15초 HUN 만료와 15분 미루기 설명도 기존 정책과 맞췄다.
+
+시뮬레이터의 지도는 WAYFILL의 인앱 지도가 아니라 PLEOS 내비 호스트를 설명하는 목업이다. 알림 위치·카드 외형·분할창 크기는 예상 배치로만 표시하며 실제 PLEOS 실행 증거로 취급하지 않는다. 앱이 결정하는 내용과 PLEOS가 결정하는 표면, 실기기 확인 항목을 화면 아래에서 구분했다.
+
+사용자 검토 후 핵심 여정에 불필요한 별도 `완료·기록` 화면을 제거했다. 검증된 주유 이벤트의 자동 저장과 앱의 기록 탭은 유지하며, 주유 확인 화면에서 새 연료 상태를 읽고 다음 판단을 준비하는 것으로 흐름을 끝낸다. 내비 옆 작은 창의 주행 중 정지 안내 문구도 제품 화면에서 제거했지만, 주행 중 캐릭터를 정지 프레임으로 제한하는 안전 동작은 유지한다. 현재 제품 모션 5종은 `web/sunset-motion-review.html`에서 함께 확인한다.
+
+## 2026-11-13 WAYFILL 브랜드 전환과 모션 후보
+
+사용자 결정에 따라 제품 노출명을 `WAYFILL`로 전환했다. Android 앱명·시연 런처·상태 화면·모니터링 알림, 웹 UI·HUN 시안·갤러리·접근성 이름, 제출/설계/인계 문서의 제품명을 함께 변경했다. 새 산출물·AVD·스키마·웹 저장 키·시연 저장소·서버 quota 환경변수도 WAYFILL 이름을 사용한다. GitHub 저장소/기존 태그·브랜치·과거 파일명과 Android 패키지 `dev.fuelpilot`, 기존 Kotlin 공개 타입은 인계와 연동을 깨지 않도록 유지한다.
+
+현재 소프트 선셋 모션이 과거 72프레임 버전보다 포즈 전환 위주라는 사용자 피드백을 반영했다. 현 외형을 유지하면서 과거의 준비→큰 반응→유지→복귀 연기 구조를 옮긴 recommend/small/full/recovery 4개 후보 시트를 `design/motion-candidates/2026-11-13-old-acting-reference/`에 별도 저장했다. `web/podong-motion-candidate-review.html`에서 재생할 수 있다. 후보는 제품 미적용 상태이며 프레임 일관성·알파·도로 띠·손발·Web/Android 동기화 QA와 사용자 승인을 거친 뒤 운영 자산을 교체한다.
+
+## 2026-11-13 32포즈 뽀동이·PLEOS 직전 경계·영상 기획
+
+사용자가 미리보기의 끊김을 지적해 16포즈를 단순 교체하던 구조를 다시 검토했다. optical-flow 중간 프레임은 얼굴·손 왜곡, 단순 크로스페이드는 겹눈이 보여 폐기했다. 추천·소량·충분한 주유·저연료 회복을 각각 8×4 / 32개의 실제 포즈로 다시 그리고 셀 중앙 캐릭터와 분리된 배경 잔여 픽셀을 제거했다. 웹은 `requestAnimationFrame`, Android는 `withFrameNanos`와 절대 경과 시간을 사용하며 최대 45ms smoothstep 보간만 적용한다. calm은 6초에 한 번 눈을 깜박이고 긴 대기 동안 프레임 루프를 쉬며, 주행·Unknown·모션 감소에서는 정지한다. 장거리 완료·일반 상태 화면의 잘못된 추천 모션도 calm으로 고쳤다.
+
+PLEOS 상황 시뮬레이터의 도착 화면에서 소량·충분한 주유·저연료 회복을 각각 선택해 실제 배치를 검토할 수 있게 했다. 검증된 WGS84 `NavigationTarget`을 station candidate에서 Assist effect와 `WaypointRequest`까지 보존하고 좌표 누락·무효·station ID 불일치를 SDK 호출 전 `Unsupported`로 막는다. 시스템 HUN과 같은 추천 identity를 쓰는 `RecommendationSpeechPort`와 Gleo용 `recommendationVoiceCommand` 계약을 추가했다. 기본 음성 포트는 무음 `Unsupported`이며 실제 PLEOS 오디오 포커스·Gleo·HUN 표면은 팀원이 연결하고 기기에서 검증해야 한다.
+
+Motion Care 참고 영상의 3분 10초 구조를 분석해 WAYFILL 2분 30초 여정, 장면 순서, 자막·내레이션, 단계 레일, 촬영 증거와 HTML/PLEOS 표기 규칙을 `docs/WAYFILL-VIDEO-STORYBOARD.md`에 정리했다. 현재 영상 문서는 촬영 전 계획이며 실제 PLEOS 성공 장면으로 주장하지 않는다.
+
+검증: `python scripts/dev.py doctor` 통과, Node 테스트 30개 통과, 패키지 검증 통과, 모션 설치 스크립트 재실행 후 웹·Android 시트 바이트 일치 확인, `verifyArchitecture` 통과. 전체 `python scripts/dev.py verify`와 Android 단위 테스트는 코드 컴파일 전에 외부 `ai.pleos.playground:NaviHelper:3.0.5`를 Google/PLEOS Maven에서 읽는 단계의 PKIX 인증서 체인 오류로 중단됐다. 별도 feature 테스트 재시도는 Windows Gradle 8.12 transform-cache 이동 오류로 중단됐다. 이 세션의 Kotlin 테스트 통과를 새로 주장하지 않는다.
+
+## 2026-11-13 팀원 인계 확정
+
+공모전 등록 정보를 `WAYFILL · KA&KO · 대표자 송호현 · 2명 · 일반 부문`으로 확정했다. 실제 PLEOS 연결 담당자가 받을 순서와 필수 시나리오, 돌려줄 증거, 금지 사항을 `docs/TEAMMATE-PLEOS-HANDOFF-2026-11-13.md`에 고정했다. 최신 인계 브랜치는 `feature/prepleos-hardening-20261113`이며 과거 `product/soft-sunset-prepleos-20261113` Release와 구분한다.
+
+인계 직전 재검사에서 `doctor`, Node 30개, 패키지 검증, 개발 도구 29개, 서버 9개가 통과했다. `python scripts/dev.py verify`는 `NaviHelper:3.0.5`를 받는 두 Maven 주소의 PKIX 인증서 오류로 중단됐고, 오프라인 재시도는 같은 의존성이 캐시에 없어 `data:navigation` 컴파일 전에 중단됐다. 실패를 통과로 바꾸지 않으며 원격 CI가 정확한 인계 커밋을 새로 검증해야 한다.

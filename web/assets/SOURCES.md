@@ -1,6 +1,6 @@
 # 뽀동이 원본 자료
 
-출처: 사용자가 제공한 FUEL PILOT 디자인 아티팩트
+출처: 사용자가 제공한 WAYFILL 디자인 아티팩트
 https://claude.ai/artifact/F1hvn6xzMmDncVC8rWj8gY#page-003e6cf4d7ba
 
 아티팩트 메뉴 → 내보내기 → HTML로 직접 내려받아 내장 manifest의 원본 이미지 bytes를 추출했다. 캐릭터 이미지를 다시 생성하거나 배경을 편집하지 않았다.

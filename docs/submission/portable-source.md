@@ -7,7 +7,7 @@ Requirements: Git for export; Python3.10+ for helpers; Node for web checks; JDK1
 Run from the repository root after committing the reviewed source:
 
 ```text
-python scripts/export_source.py ../fuel-pilot-source.zip --ref HEAD
+python scripts/export_source.py ../wayfill-source.zip --ref HEAD
 ```
 
 The default reads committed bytes using git archive. It never collects untracked files or local edits. It filters Git metadata, caches, build outputs, local.properties, .superpowers, environment files, common credentials/private-key files and distributable binaries. The Gradle wrapper JAR remains because it is a required build bootstrapper, not a vehicle SDK. Git export-ignore attributes also apply. Source symlinks are omitted rather than followed. Review the printed count and actual archive contents before sharing.
@@ -17,7 +17,7 @@ The exporter overrides host `core.autocrlf`/`core.eol` when making the archive, 
 If an already committed source path needs an explicitly reviewed local edit in a temporary archive:
 
 ```text
-python scripts/export_source.py ../fuel-pilot-working-source.zip --ref HEAD --working-tree
+python scripts/export_source.py ../wayfill-working-source.zip --ref HEAD --working-tree
 ```
 
 This overlays current bytes only at paths present in the selected revision. Deleted paths are omitted. New files, even staged additions absent from that revision, are excluded: review and commit them before a complete export. Record the selected ref and that the archive contains working edits; it is not a reproducible committed snapshot. Untracked credential files are never discovered by a recursive copy. The helper does not modify Git's index or commits.
@@ -48,4 +48,4 @@ python scripts/check_demo_isolation.py --apk app/build/outputs/apk/release/app-r
 
 CI workflow [verify.yml](../../.github/workflows/verify.yml) runs verification and a separate KVM-enabled Android35 managed-device job. Reports and review APK/source artifacts upload even when a preceding check fails; inspect job outcomes. APKs are review artifacts, and release APKs are unsigned. Their existence alone does not establish production signing, installation, vehicle compatibility, live provider access or successful tests.
 
-Record SHA256 with `Get-FileHash ../fuel-pilot-source.zip -Algorithm SHA256` on PowerShell or `sha256sum ../fuel-pilot-source.zip` on Linux. Retain the full source revision, APK hash and report links in the [readiness evidence log](readiness-checklist.md).
+Record SHA256 with `Get-FileHash ../wayfill-source.zip -Algorithm SHA256` on PowerShell or `sha256sum ../wayfill-source.zip` on Linux. Retain the full source revision, APK hash and report links in the [readiness evidence log](readiness-checklist.md).

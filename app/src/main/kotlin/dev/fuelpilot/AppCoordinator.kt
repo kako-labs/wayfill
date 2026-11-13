@@ -75,6 +75,7 @@ class AppCoordinator(private val dependencies: AppDependencies) {
             SignalStatus.STALE in signals -> AssistAvailability.STALE
             else -> null
         }
+        var navigationTargets = emptyMap<String, NavigationTarget>()
         val presentation = if (unavailable != null) unavailable(unavailable) else {
             val range = (energy as EnergyResult.Available).rangeRemainingKm
             val activeRoute = (route as RouteResult.Available).route
@@ -87,10 +88,13 @@ class AppCoordinator(private val dependencies: AppDependencies) {
             ) unavailable(AssistAvailability.UNAVAILABLE)
             else {
                 val input = FuelDecisionInput(rangeRemainingKm = range, minimumReserveKm = reserve.toDouble(), route = activeRoute, stations = candidates)
+                navigationTargets = candidates.mapNotNull { candidate ->
+                    candidate.toNavigationTarget()?.let { candidate.id to it }
+                }.toMap()
                 mapper.map(AssistPresentationInput(engine.evaluate(input), input, activeRoute?.id))
             }
         }
-        intents += AssistIntent.PresentationChanged(presentation, minimumReserveKm = reserve)
+        intents += AssistIntent.PresentationChanged(presentation, minimumReserveKm = reserve, navigationTargets = navigationTargets)
         intents
     }
 
@@ -104,7 +108,7 @@ class AppCoordinator(private val dependencies: AppDependencies) {
     }
 
     private suspend fun deliver(assist: AssistViewModel, effect: AssistEffect.AddWaypoint) {
-        val request = WaypointRequest(effect.requestId, effect.stationId, effect.mode, effect.expectedRouteId)
+        val request = WaypointRequest(effect.requestId, effect.stationId, effect.mode, effect.expectedRouteId, effect.target)
         if (assist.state.value.pending != request) return
         coroutineScope {
             val operation = launch {
@@ -122,6 +126,9 @@ class AppCoordinator(private val dependencies: AppDependencies) {
     }
 
     private suspend fun navigate(request: WaypointRequest): WaypointResult {
+        val target = request.target
+        if (target == null || target.stationId != request.stationId || !target.isVerifiedWgs84())
+            return WaypointResult.Unsupported(request.requestId, request.stationId)
         val capabilities = dependencies.navigation.capabilities()
         if (request.mode == NavigationMode.SET_DESTINATION) {
             if (capabilities.activeRouteId != null) return WaypointResult.Cancelled(request.requestId, request.stationId)
@@ -140,6 +147,21 @@ class AppCoordinator(private val dependencies: AppDependencies) {
 
     private fun unavailable(value: AssistAvailability) =
         AssistPresentation(FuelRouteUi(), dev.fuelpilot.ui.Screen.Widget, null, value)
+    private fun FuelStationCandidate.toNavigationTarget(): NavigationTarget? {
+        val target = navigationTarget ?: return null
+        if (target.stationId != id || !target.isValid()) return null
+        return NavigationTarget(
+            stationId = id,
+            latitude = target.latitude,
+            longitude = target.longitude,
+            name = name,
+            provenance = target.provenance,
+            poiId = target.poiId,
+            address = target.address,
+            poiSubId = target.poiSubId,
+            poiProvider = target.poiProvider,
+        )
+    }
     private fun Double.validDistance() = isFinite() && this >= 0
     private suspend fun <T> readOr(fallback: T, block: suspend () -> T): T = try { withTimeout(dependencies.readTimeoutMs) { block() } }
         catch (_: TimeoutCancellationException) { fallback }

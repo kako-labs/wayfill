@@ -1,10 +1,10 @@
 # 현재 이어갈 위치 · 2026-11-13
 
-확정 디자인의 최신 GitHub 인계 브랜치는 `product/soft-sunset-prepleos-20261113`이다. [현재 제품 인계](docs/PRE-PLEOS-READINESS-2026-11-13.md), [화면 모음](docs/screen-gallery.html), [다른 기기 이동](docs/CROSS-DEVICE-2026-11-13.md)을 먼저 읽는다. [11월 13일 최신 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-soft-sunset-2026-11-13) 또는 다음 Git 명령으로 받는다. 아래 과거 브랜치·Release는 이전 기록이다.
+확정 디자인의 최신 GitHub 인계 브랜치는 `feature/prepleos-hardening-20261113`이다. [팀원 인계 문서](docs/TEAMMATE-PLEOS-HANDOFF-2026-11-13.md), [현재 제품 인계](docs/PRE-PLEOS-READINESS-2026-11-13.md), [PLEOS 상황 흐름 시뮬레이터](web/pleos-scenario-simulator.html), [화면 모음](docs/screen-gallery.html), [다른 기기 이동](docs/CROSS-DEVICE-2026-11-13.md)을 먼저 읽는다. [11월 13일 최신 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/wayfill-prepleos-handoff-2026-11-13) 또는 다음 Git 명령으로 받는다. 아래 과거 브랜치·Release는 이전 기록이다.
 
 ```powershell
-git clone --branch product/soft-sunset-prepleos-20261113 --single-branch https://github.com/kako-labs/fuel-pilot.git fuel-pilot-sunset
-cd fuel-pilot-sunset
+git clone --branch feature/prepleos-hardening-20261113 --single-branch https://github.com/kako-labs/fuel-pilot.git wayfill
+cd wayfill
 git log -2 --oneline
 ```
 
@@ -12,7 +12,7 @@ git log -2 --oneline
 
 ---
 
-# FUEL PILOT 이어가기 · 2026-11-11
+# WAYFILL 이어가기 · 2026-11-11
 
 **찾지 못했던 문제를 막기 위한 고정 진입점:** [전체 인계 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-handoff-2026-11-11)와 [다른 노트북 인계 문서](docs/CROSS-DEVICE-2026-11-11.md)를 먼저 확인한다. 기본 `main`은 초기 상태이며 현재 앱은 `integrate/podong-approved`에 있다.
 
