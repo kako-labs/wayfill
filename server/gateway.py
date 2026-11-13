@@ -191,6 +191,17 @@ class SlidingWindowLimiter:
             return allowed
 
 
+def client_key(address):
+    """Limiter key for an address: IPv4 as is, IPv6 by its /64, since one subscriber holds a whole /64 and could
+    otherwise rotate addresses to reset its limits. Raises ValueError for anything that is not an address."""
+    ip = ipaddress.ip_address(address)
+    if ip.version == 6:
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.ip_network(f'{ip}/64', strict=False))
+    return str(ip)
+
+
 def rate_limited():
     return 429, dict(schemaVersion=1, status='unavailable', reason='RATE_LIMITED')
 
@@ -265,10 +276,10 @@ def handler_for(gateway, corridor=None, request_limiter=None, trust_proxy=False)
         def client(self):
             if trust_proxy:
                 try:
-                    return str(ipaddress.ip_address(self.headers.get('CF-Connecting-IP', '').strip()))
+                    return client_key(self.headers.get('CF-Connecting-IP', '').strip())
                 except ValueError:
                     pass
-            return self.client_address[0]
+            return client_key(self.client_address[0])
 
         def reply(self, code, result):
             payload = json.dumps(result, allow_nan=False).encode('utf-8')

@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from server.gateway import (Gateway, OpinetPool, OpinetProvider, SlidingWindowLimiter, SqliteQuota, ProviderFailure,
-                            handler_for, opinet_pool_from_env)
+                            client_key, handler_for, opinet_pool_from_env)
 from http.server import HTTPServer
 import http.client
 import threading
@@ -133,6 +133,14 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(['AAAAAAAAAA', 'BBBBBBBBBB'], [p._api_key for p, _ in pool._entries])
         self.assertEqual(['opinet-quota-1.sqlite', 'opinet-quota-2.sqlite'], [Path(q.path).name for _, q in pool._entries])
         self.assertFalse(opinet_pool_from_env({}, Path(self.tmp.name)).configured)
+
+    def test_ipv6_clients_share_a_limit_per_64(self):
+        self.assertEqual(client_key('2001:db8:1:2:aaaa::1'), client_key('2001:db8:1:2:ffff::9'))
+        self.assertNotEqual(client_key('2001:db8:1:2::1'), client_key('2001:db8:1:3::1'))
+        self.assertEqual('203.0.113.7', client_key('203.0.113.7'))
+        self.assertEqual('203.0.113.7', client_key('::ffff:203.0.113.7'))
+        with self.assertRaises(ValueError):
+            client_key('not-an-ip')
 
     def test_limiters_bound_each_client(self):
         clock = [0.0]
