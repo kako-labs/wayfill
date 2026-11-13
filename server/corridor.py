@@ -248,15 +248,16 @@ class RouteCorridor:
     """Corridors are private to one trip: each build returns an unguessable token, and only a request carrying
     it (same destination and fuel, origin still on the route) reuses that corridor. Another caller cannot
     reuse or probe someone else's trip. Provider samples (public price data per 1 km cell) are shared."""
-    def __init__(self, routing, opinet, quota, routing_quota, clock=None, workers=4):
+    def __init__(self, routing, pool, routing_quota, clock=None, workers=4, build_limiter=None):
         import time
-        self.routing, self.opinet, self.quota, self.routing_quota = routing, opinet, quota, routing_quota
+        self.routing, self.pool, self.routing_quota = routing, pool, routing_quota
+        self.build_limiter = build_limiter
         self.clock = clock or time.time
         self.workers = workers
         self._corridors, self._samples = {}, {}
         self._lock = threading.Lock()
 
-    def measure(self, query):
+    def measure(self, query, client=None):
         def error(code, reason):
             return code, dict(schemaVersion=1, status='unavailable', reason=reason)
         try:
@@ -265,7 +266,7 @@ class RouteCorridor:
             return error(400, 'INVALID_QUERY')
         if not self.routing.configured:
             return error(503, 'ROUTING_UNCONFIGURED')
-        if not self.opinet.configured:
+        if not self.pool.configured:
             return error(503, 'PROVIDER_UNCONFIGURED')
         now = int(self.clock())
         with self._lock:
@@ -276,6 +277,8 @@ class RouteCorridor:
             if (corridor is None or corridor['destination'] != destination or corridor['fuel'] != fuel or
                     corridor['route'].project(*origin)[1] > OFF_ROUTE_M or
                     self._unhinted_mismatch(corridor, origin, navigation_m)):
+                if self.build_limiter is not None and not self.build_limiter.allow(client):
+                    return error(429, 'RATE_LIMITED')
                 corridor = self._build(origin, destination, fuel, now, navigation_m)
                 with self._lock:
                     self._corridors[corridor['token']] = corridor
@@ -343,10 +346,11 @@ class RouteCorridor:
             plan = [(c, self._cached_sample(c, fuel, now)) for c in centres]
         missing = [c for c, cached in plan if cached is None]
         # Reserve the whole provider budget up front (all or nothing), keeping a share for /discover.
-        if missing and not self.quota.consume(now, units=len(missing), keep=DISCOVER_RESERVE):
+        provider = self.pool.reserve(now, units=len(missing), keep=DISCOVER_RESERVE) if missing else None
+        if missing and provider is None:
             raise ProviderFailure('QUOTA_EXHAUSTED')
-        with ThreadPoolExecutor(max_workers=self.workers) as pool:
-            fetched = dict(zip(missing, pool.map(lambda c: self._fetch_sample(c, fuel, now), missing)))
+        with ThreadPoolExecutor(max_workers=self.workers) as executor:
+            fetched = dict(zip(missing, executor.map(lambda c: self._fetch_sample(provider, c, fuel, now), missing)))
         samples = [cached or fetched[c] for c, cached in plan]
         batches = [rows for _, rows in samples]
         if not any(batches):
@@ -386,10 +390,10 @@ class RouteCorridor:
         cached = self._samples.get((round(centre[0], 1), round(centre[1], 1), fuel))
         return cached if cached and 0 <= now - cached[0] < SAMPLE_CACHE_TTL_S else None
 
-    def _fetch_sample(self, centre, fuel, now):
+    def _fetch_sample(self, provider, centre, fuel, now):
         """Always one provider call; the caller has already reserved quota for it."""
         key = (round(centre[0], 1), round(centre[1], 1), fuel)
-        rows = self.opinet.discover(dict(coordinateSystem='KATEC', x=centre[0], y=centre[1],
+        rows = provider.discover(dict(coordinateSystem='KATEC', x=centre[0], y=centre[1],
                                          radiusMeters=SEARCH_RADIUS_M, fuel=fuel), allow_empty=True)
         with self._lock:
             self._samples[key] = (now, rows)

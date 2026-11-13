@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 from server import katec
 from server.corridor import (COVERAGE_RADIUS_M, MAX_LATERAL_M, SEARCH_RADIUS_M, KakaoDirections, Route,
                              RouteCorridor, haversine, sample_centres)
-from server.gateway import Gateway, OpinetProvider, ProviderFailure, SqliteQuota, handler_for
+from server.gateway import Gateway, OpinetPool, OpinetProvider, ProviderFailure, SlidingWindowLimiter, SqliteQuota, handler_for
 
 M_PER_DEG_LAT = 111195.0
 SPEED = 15.0
@@ -94,7 +94,7 @@ class CorridorTests(unittest.TestCase):
         self.opinet = OpinetProvider('OPINETSECRET', opinet)
         self.quota = SqliteQuota(Path(self.tmp.name) / 'quota.sqlite', daily_limit=300)
         self.routing_quota = SqliteQuota(Path(self.tmp.name) / 'routing.sqlite', daily_limit=1000, ceiling=10000)
-        self.corridor = RouteCorridor(self.routing, self.opinet, self.quota, self.routing_quota,
+        self.corridor = RouteCorridor(self.routing, OpinetPool([(self.opinet, self.quota)]), self.routing_quota,
                                       clock=lambda: self.now, workers=2)
 
     def tearDown(self):
@@ -235,13 +235,23 @@ class CorridorTests(unittest.TestCase):
 
     def used(self):
         import sqlite3
-        with sqlite3.connect(self.quota.path) as db:
+        from contextlib import closing
+        with closing(sqlite3.connect(self.quota.path)) as db:
             row = db.execute('SELECT calls FROM quota WHERE id=1').fetchone()
         return row[0] if row else 0
 
+    def test_corridor_builds_are_limited_per_client_but_reuse_is_not(self):
+        corridor = RouteCorridor(self.routing, OpinetPool([(self.opinet, self.quota)]), self.routing_quota,
+                                 clock=lambda: self.now, build_limiter=SlidingWindowLimiter(1, 3600))
+        status, result = corridor.measure(self.query(), 'car-1')
+        self.assertEqual(200, status)
+        self.assertEqual(200, corridor.measure(self.query(token=result['corridorToken']), 'car-1')[0])
+        self.assertEqual((429, 'RATE_LIMITED'), (corridor.measure(self.query(), 'car-1')[0], corridor.measure(self.query(), 'car-1')[1]['reason']))
+        self.assertEqual(200, corridor.measure(self.query(), 'car-2')[0])
+
     def test_routing_calls_are_metered(self):
         tight = SqliteQuota(Path(self.tmp.name) / 'tight-routing', daily_limit=2, ceiling=10000)
-        corridor = RouteCorridor(self.routing, self.opinet, self.quota, tight, clock=lambda: self.now)
+        corridor = RouteCorridor(self.routing, OpinetPool([(self.opinet, self.quota)]), tight, clock=lambda: self.now)
         # Base route fits; measuring two stations does not: refused before any via-station request.
         status, result = corridor.measure(self.query())
         self.assertEqual((429, 'ROUTING_QUOTA_EXHAUSTED'), (status, result['reason']))
@@ -269,9 +279,9 @@ class CorridorTests(unittest.TestCase):
         self.assertEqual('ROUTE_NOT_FOUND', self.corridor.measure(self.query())[1]['reason'])
 
     def test_unconfigured_keys_fail_without_network(self):
-        corridor = RouteCorridor(KakaoDirections('', lambda *a: self.fail('network')), self.opinet, self.quota, self.routing_quota)
+        corridor = RouteCorridor(KakaoDirections('', lambda *a: self.fail('network')), OpinetPool([(self.opinet, self.quota)]), self.routing_quota)
         self.assertEqual((503, 'ROUTING_UNCONFIGURED'), (corridor.measure(self.query())[0], corridor.measure(self.query())[1]['reason']))
-        corridor = RouteCorridor(self.routing, OpinetProvider(' '), self.quota, self.routing_quota)
+        corridor = RouteCorridor(self.routing, OpinetPool([(OpinetProvider(' '), self.quota)]), self.routing_quota)
         self.assertEqual('PROVIDER_UNCONFIGURED', corridor.measure(self.query())[1]['reason'])
         self.assertEqual([], self.kakao_calls)
 
@@ -290,7 +300,7 @@ class CorridorTests(unittest.TestCase):
         self.assertEqual(([], []), (self.kakao_calls, self.opinet_calls))
 
     def test_quota_exhaustion_is_429(self):
-        corridor = RouteCorridor(self.routing, self.opinet, SqliteQuota(Path(self.tmp.name) / 'tiny', daily_limit=2),
+        corridor = RouteCorridor(self.routing, OpinetPool([(self.opinet, SqliteQuota(Path(self.tmp.name) / 'tiny', daily_limit=2))]),
                                  self.routing_quota, clock=lambda: self.now)
         status, result = corridor.measure(self.query())
         self.assertEqual((429, 'QUOTA_EXHAUSTED'), (status, result['reason']))
@@ -301,7 +311,7 @@ class CorridorTests(unittest.TestCase):
         self.assertEqual([], self.opinet_calls)
 
     def test_http_route_endpoint(self):
-        server = HTTPServer(('127.0.0.1', 0), handler_for(Gateway(self.opinet, self.quota), self.corridor))
+        server = HTTPServer(('127.0.0.1', 0), handler_for(Gateway(OpinetPool([(self.opinet, self.quota)])), self.corridor))
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
@@ -315,7 +325,7 @@ class CorridorTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join()
-        unrouted = handler_for(Gateway(self.opinet, self.quota))
+        unrouted = handler_for(Gateway(OpinetPool([(self.opinet, self.quota)])))
         server = HTTPServer(('127.0.0.1', 0), unrouted)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()

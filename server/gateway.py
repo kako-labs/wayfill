@@ -1,12 +1,14 @@
 """Key-isolated station gateway: Opinet catalog (/discover) and, via server.corridor, stations along a
 Kakao-routed corridor (/route). No route safety claims or CRS guesses; keys never leave the server."""
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+import ipaddress
 import json
 import math
 import os
+import re
 from pathlib import Path
 import sqlite3
 import threading
@@ -149,13 +151,57 @@ class SqliteQuota:
             return True
 
 
+class OpinetPool:
+    """Several Opinet keys, each with its own persistent daily quota. Reservations fill the first key with
+    room, so one build's searches all run on a single key. Keys never leave this object."""
+    def __init__(self, entries):
+        self._entries = [(provider, quota) for provider, quota in entries if provider.configured]
+
+    @property
+    def configured(self):
+        return bool(self._entries)
+
+    def reserve(self, now, units=1, keep=0):
+        """The provider whose quota took all `units`, or None when no single key has room."""
+        for provider, quota in self._entries:
+            if quota.consume(now, units=units, keep=keep):
+                return provider
+        return None
+
+
+class SlidingWindowLimiter:
+    """At most `limit` events per client in any `window_seconds`; memory bounded to `max_clients`."""
+    def __init__(self, limit, window_seconds, clock=time.monotonic, max_clients=10000):
+        self.limit, self.window, self.clock, self.max_clients = limit, window_seconds, clock, max_clients
+        self._events = OrderedDict()
+        self._lock = threading.Lock()
+
+    def allow(self, client):
+        now = self.clock()
+        with self._lock:
+            events = self._events.pop(client, None) or deque()
+            while events and now - events[0] >= self.window:
+                events.popleft()
+            allowed = len(events) < self.limit
+            if allowed:
+                events.append(now)
+            self._events[client] = events
+            while len(self._events) > self.max_clients:
+                self._events.popitem(last=False)
+            return allowed
+
+
+def rate_limited():
+    return 429, dict(schemaVersion=1, status='unavailable', reason='RATE_LIMITED')
+
+
 class Gateway:
-    def __init__(self, provider, quota, clock=time.time):
-        self.provider, self.quota, self.clock = provider, quota, clock
+    def __init__(self, pool, clock=time.time, fetch_limiter=None):
+        self.pool, self.clock, self.fetch_limiter = pool, clock, fetch_limiter
         self._cache = OrderedDict()
         self._lock = threading.Lock()
 
-    def discover(self, query):
+    def discover(self, query, client=None):
         def error(code, reason):
             return code, dict(schemaVersion=1, status='unavailable', reason=reason)
         try:
@@ -164,7 +210,7 @@ class Gateway:
             return error(400, 'INVALID_QUERY')
         if query['coordinateSystem'] != 'KATEC':
             return error(503, 'COORDINATE_TRANSFORM_UNVERIFIED')
-        if not self.provider.configured:
+        if not self.pool.configured:
             return error(503, 'PROVIDER_UNCONFIGURED')
         key = json.dumps(query, sort_keys=True, allow_nan=False)
         with self._lock:
@@ -174,10 +220,13 @@ class Gateway:
                 result = dict(cached, provenance=dict(cached['provenance'], cacheHit=True))
                 return 200, result
             self._cache.pop(key, None)
+            if self.fetch_limiter is not None and not self.fetch_limiter.allow(client):
+                return rate_limited()
             try:
-                if not self.quota.consume(now):
+                provider = self.pool.reserve(now)
+                if provider is None:
                     return error(429, 'QUOTA_EXHAUSTED')
-                stations = self.provider.discover(query)
+                stations = provider.discover(query)
             except ProviderFailure as failure:
                 return error(503, failure.reason)
             except Exception:
@@ -201,7 +250,9 @@ def strict_object(pairs):
     return result
 
 
-def handler_for(gateway, corridor=None):
+def handler_for(gateway, corridor=None, request_limiter=None, trust_proxy=False):
+    """trust_proxy: take the client address from CF-Connecting-IP. Only safe when the server listens on
+    loopback behind the Cloudflare tunnel, so no one else can set that header."""
     routes = {'/v1/stations/discover': gateway.discover}
     if corridor is not None:
         routes['/v1/stations/route'] = corridor.measure
@@ -211,11 +262,39 @@ def handler_for(gateway, corridor=None):
         def log_message(self, format, *args):
             pass
 
+        def client(self):
+            if trust_proxy:
+                try:
+                    return str(ipaddress.ip_address(self.headers.get('CF-Connecting-IP', '').strip()))
+                except ValueError:
+                    pass
+            return self.client_address[0]
+
+        def reply(self, code, result):
+            payload = json.dumps(result, allow_nan=False).encode('utf-8')
+            self.send_response(code)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(payload)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_GET(self):
+            # Liveness only: no configuration, quota or key state is revealed.
+            if self.path != '/v1/health':
+                self.send_error(404)
+                return
+            self.reply(200, dict(schemaVersion=1, status='ok'))
+
         def do_POST(self):
             self.connection.settimeout(5)
             endpoint = routes.get(self.path)
             if endpoint is None:
                 self.send_error(404)
+                return
+            client = self.client()
+            if request_limiter is not None and not request_limiter.allow(client):
+                self.reply(*rate_limited())
                 return
             try:
                 length = int(self.headers.get('Content-Length', '0'))
@@ -227,31 +306,47 @@ def handler_for(gateway, corridor=None):
                 if len(body) != length:
                     raise ValueError('truncated')
                 query = json.loads(body, object_pairs_hook=strict_object)
-                code, result = endpoint(query)
+                code, result = endpoint(query, client)
             except (ValueError, UnicodeError, TimeoutError):
                 code, result = 400, dict(schemaVersion=1, status='unavailable', reason='INVALID_QUERY')
-            payload = json.dumps(result, allow_nan=False).encode('utf-8')
-            self.send_response(code)
-            self.send_header('Content-Type', 'application/json; charset=utf-8')
-            self.send_header('Content-Length', str(len(payload)))
-            self.send_header('Cache-Control', 'no-store')
-            self.end_headers()
-            self.wfile.write(payload)
+            self.reply(code, result)
     return Handler
+
+
+OPINET_KEY_NAME = re.compile(r'OPINET_API_KEY(?:_([0-9]{1,2}))?')
+
+
+def opinet_pool_from_env(environ, data_dir):
+    """OPINET_API_KEY and OPINET_API_KEY_1.._99, each with its own quota file named by its slot (never the key)."""
+    entries = []
+    for name in sorted(environ, key=lambda n: (len(n), n)):
+        match = OPINET_KEY_NAME.fullmatch(name)
+        if match and environ[name].strip():
+            slot = match.group(1)
+            quota = SqliteQuota(data_dir / (f'opinet-quota-{slot}.sqlite' if slot else 'opinet-quota.sqlite'))
+            entries.append((OpinetProvider(environ[name]), quota))
+    return OpinetPool(entries)
 
 
 def main():
     from server.corridor import KakaoDirections, RouteCorridor
+    env = os.environ
     # Only the server reads these environment variables; never put them in app config.
-    provider = OpinetProvider(os.environ.get('OPINET_API_KEY', ''))
-    routing = KakaoDirections(os.environ.get('KAKAO_REST_API_KEY', ''))
-    quota = SqliteQuota(Path(os.environ.get('WAYFILL_QUOTA_DB', 'opinet-quota.sqlite')))
-    # Kakao requests are metered too: one base route plus one per measured station.
-    routing_quota = SqliteQuota(Path(os.environ.get('WAYFILL_ROUTING_QUOTA_DB', 'routing-quota.sqlite')),
-                                daily_limit=int(os.environ.get('WAYFILL_ROUTING_DAILY_LIMIT', '1000')), ceiling=10000)
-    handler = handler_for(Gateway(provider, quota), RouteCorridor(routing, provider, quota, routing_quota))
+    data_dir = Path(env.get('WAYFILL_DATA_DIR', '.'))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    pool = opinet_pool_from_env(env, data_dir)
+    routing = KakaoDirections(env.get('KAKAO_REST_API_KEY', ''))
+    # Kakao requests are metered too: one or two base routes plus one per measured station.
+    routing_quota = SqliteQuota(data_dir / 'routing-quota.sqlite',
+                                daily_limit=int(env.get('WAYFILL_ROUTING_DAILY_LIMIT', '1000')), ceiling=10000)
+    # Per client: plenty for a vehicle refreshing every 5 s, tight on the calls that cost provider quota.
+    gateway = Gateway(pool, fetch_limiter=SlidingWindowLimiter(120, 3600))
+    corridor = RouteCorridor(routing, pool, routing_quota, build_limiter=SlidingWindowLimiter(30, 3600))
+    handler = handler_for(gateway, corridor, request_limiter=SlidingWindowLimiter(1800, 3600),
+                          trust_proxy=env.get('WAYFILL_TRUST_PROXY') == 'true')
+    host, port = env.get('WAYFILL_HOST', '127.0.0.1'), int(env.get('WAYFILL_PORT', '8787'))
     # Threaded: a corridor build takes seconds and must not stall /discover.
-    ThreadingHTTPServer(('127.0.0.1', 8787), handler).serve_forever()
+    ThreadingHTTPServer((host, port), handler).serve_forever()
 
 
 if __name__ == '__main__':
