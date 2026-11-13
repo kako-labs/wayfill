@@ -210,10 +210,33 @@ class ProductionStationsTest {
     @Test fun routeCorridorResultForAnOldOriginIsDropped() = runTest {
         var reads = 0
         val moving = object : LocationRepository {
-            override suspend fun readLocation() = LocationResult.Available(if (reads++ == 0) origin else origin.copy(latitude = 37.001))
+            override suspend fun readLocation() = LocationResult.Available(if (reads++ == 0) origin else origin.copy(latitude = 37.01))
         }
         val repo = corridorRepository(RouteCorridorSource { RouteCorridorResult.Available(corridorSnapshot) }, loc = moving)
         assertEquals(ProductionStationFailure.CONTEXT_CHANGED, failure(repo.readStations()))
+    }
+
+    @Test fun aMovingVehicleKeepsItsAnswerWithinTheTripDrift() = runTest {
+        // About 110 m further and the navigation's rounded remaining distance one step down: same trip.
+        var reads = 0
+        val moving = object : LocationRepository {
+            override suspend fun readLocation() = LocationResult.Available(if (reads++ == 0) origin else origin.copy(latitude = 37.001))
+        }
+        var navReads = 0
+        val navigating = nav { RouteResult.Available(if (navReads++ == 0) destinationRoute else destinationRoute.copy(remainingDistanceKm = 99.0)) }
+        val corridor = RouteCorridorSource { RouteCorridorResult.Available(corridorSnapshot) }
+        assertTrue(corridorRepository(corridor, nav = navigating, loc = moving).readStations() is ProductionStationRead.Available)
+        // A coordinator context from a moment earlier is the same trip too.
+        val repo = corridorRepository(corridor)
+        assertTrue(repo.readStationsFor(origin.copy(latitude = 36.999), destinationRoute.copy(remainingDistanceKm = 100.9))
+            is ProductionStationRead.Available)
+        // A new route identity or a different destination is never the same trip.
+        assertEquals(ProductionStationFailure.CONTEXT_CHANGED,
+            failure(repo.readStationsFor(origin, destinationRoute.copy(id = "rerouted"))))
+        assertEquals(ProductionStationFailure.CONTEXT_CHANGED,
+            failure(repo.readStationsFor(origin, destinationRoute.copy(destinationLatitude = 37.6))))
+        assertEquals(ProductionStationFailure.CONTEXT_CHANGED,
+            failure(repo.readStationsFor(origin, destinationRoute.copy(remainingDistanceKm = 102.0))))
     }
 
     @Test fun noRouteNeverAsksTheCorridor() = runTest {

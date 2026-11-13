@@ -7,8 +7,12 @@ import dev.fuelpilot.data.poi.gateway.*
 import dev.fuelpilot.model.*
 import kotlinx.coroutines.CancellationException
 import kotlin.math.abs
+import kotlin.math.asin
 import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /** Implement only after the provider's datum/projection/axes and both directions are verified. */
 fun interface VerifiedStationCoordinateTransform {
@@ -153,7 +157,7 @@ class ProductionStationRepository internal constructor(
             val routeRead = navigation.readRoute() as? RouteResult.Available
                 ?: return fail(ProductionStationFailure.ROUTE_UNAVAILABLE)
             val route = routeRead.route
-            if (expected != null && (origin != expected.origin || route != expected.route))
+            if (expected != null && !sameTrip(expected.origin, expected.route, origin, route))
                 return fail(ProductionStationFailure.CONTEXT_CHANGED)
             if (route != null && (route.id.isBlank() || !validDistance(route.remainingDistanceKm)))
                 return fail(ProductionStationFailure.ROUTE_UNAVAILABLE)
@@ -186,8 +190,7 @@ class ProductionStationRepository internal constructor(
                 rows.map { it.stationId }.distinct().size != rows.size || rows.any { !validMetric(it, route) })
                 return fail(ProductionStationFailure.INVALID_ROAD_METRICS)
             // Suspended network/routing work cannot publish a result for an old route or origin.
-            if (location.readLocation() != LocationResult.Available(origin) || navigation.readRoute() != routeRead)
-                return fail(ProductionStationFailure.CONTEXT_CHANGED)
+            if (!stillSameTrip(origin, routeRead)) return fail(ProductionStationFailure.CONTEXT_CHANGED)
             if (!fresh(catalog.fetchedAtEpochSeconds, catalog.expiresAtEpochSeconds, 300))
                 return fail(ProductionStationFailure.STALE_CATALOG)
             if (!fresh(measured.measuredAtEpochSeconds, measured.expiresAtEpochSeconds, 30))
@@ -250,8 +253,7 @@ class ProductionStationRepository internal constructor(
                     !validLocation(VehicleLocation(row.latitude, row.longitude)) })
             return fail(ProductionStationFailure.INVALID_ROAD_METRICS)
         // Suspended network/routing work cannot publish a result for an old route or origin.
-        if (location.readLocation() != LocationResult.Available(origin) || navigation.readRoute() != routeRead)
-            return fail(ProductionStationFailure.CONTEXT_CHANGED)
+        if (!stillSameTrip(origin, routeRead)) return fail(ProductionStationFailure.CONTEXT_CHANGED)
         if (!fresh(snapshot.fetchedAtEpochSeconds, snapshot.expiresAtEpochSeconds, 30))
             return fail(ProductionStationFailure.STALE_ROAD_METRICS)
         // The two routings end at the same destination but may differ slightly in length; a station the
@@ -263,6 +265,37 @@ class ProductionStationRepository internal constructor(
                 navigationTarget = VerifiedStationNavigationTarget(row.id, row.latitude, row.longitude,
                     NavigationTargetProvenance.VERIFIED_ROAD_METRICS_WGS84))
         })
+    }
+
+    /** Re-reads location and route after suspended work; see [sameTrip]. */
+    private suspend fun stillSameTrip(origin: VehicleLocation, routeRead: RouteResult.Available): Boolean {
+        val latest = (location.readLocation() as? LocationResult.Available)?.location ?: return false
+        val route = navigation.readRoute() as? RouteResult.Available ?: return false
+        return sameTrip(origin, routeRead.route, latest, route.route)
+    }
+
+    /**
+     * Whether two reads a moment apart describe the same trip. A moving vehicle never reads the same position
+     * twice (a query takes about 2 s, 55 m at 100 km/h) and PLEOS rounds the remaining distance to whole
+     * kilometres, so exact equality would reject every answer while driving. The route identity and destination
+     * must match exactly; the position may drift up to [MAX_TRIP_DRIFT_METERS] and the remaining distance up to
+     * [MAX_REMAINING_DRIFT_KM]. Distances measured from the earlier position are then too long by at most that
+     * drift, which only makes a recommendation earlier, never later.
+     */
+    private fun sameTrip(a: VehicleLocation, routeA: ActiveRoute?, b: VehicleLocation, routeB: ActiveRoute?): Boolean {
+        if ((routeA == null) != (routeB == null)) return false
+        if (routeA != null && routeB != null && (routeA.id != routeB.id || routeA.destinationName != routeB.destinationName ||
+                routeA.destinationLatitude != routeB.destinationLatitude || routeA.destinationLongitude != routeB.destinationLongitude ||
+                abs(routeA.remainingDistanceKm - routeB.remainingDistanceKm) > MAX_REMAINING_DRIFT_KM)) return false
+        return validLocation(b) && distanceMeters(a, b) <= MAX_TRIP_DRIFT_METERS
+    }
+
+    private fun distanceMeters(a: VehicleLocation, b: VehicleLocation): Double {
+        val dLat = Math.toRadians(b.latitude - a.latitude)
+        val dLon = Math.toRadians(b.longitude - a.longitude)
+        val h = sin(dLat / 2).let { it * it } +
+            cos(Math.toRadians(a.latitude)) * cos(Math.toRadians(b.latitude)) * sin(dLon / 2).let { it * it }
+        return 2 * 6_371_000.0 * asin(sqrt(h.coerceIn(0.0, 1.0)))
     }
 
     private fun fresh(fetched: Long, expires: Long, maxAge: Long): Boolean {
@@ -294,6 +327,8 @@ class ProductionStationRepository internal constructor(
     private companion object {
         const val ROUTE_AGREEMENT_MIN_METERS = 2000.0
         const val ROUTE_AGREEMENT_RATIO = 0.15
+        const val MAX_TRIP_DRIFT_METERS = 300.0
+        const val MAX_REMAINING_DRIFT_KM = 1.5
     }
     private fun validLocation(value: VehicleLocation) = value.latitude.isFinite() && value.latitude in -90.0..90.0 &&
         value.longitude.isFinite() && value.longitude in -180.0..180.0 &&
