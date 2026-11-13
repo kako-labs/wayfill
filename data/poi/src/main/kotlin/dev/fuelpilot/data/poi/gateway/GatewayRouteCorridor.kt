@@ -15,9 +15,12 @@ data class RouteCorridorQuery(
     val destinationLatitude: Double,
     val destinationLongitude: Double,
     val fuel: StationFuel,
+    /** The vehicle navigation's own remaining distance, so the gateway can pick the routing that matches it. */
+    val navigationRemainingMeters: Double? = null,
 ) {
     fun isValid(): Boolean = listOf(originLatitude, destinationLatitude).all { it.isFinite() && it in KOREA_LATITUDE } &&
-        listOf(originLongitude, destinationLongitude).all { it.isFinite() && it in KOREA_LONGITUDE }
+        listOf(originLongitude, destinationLongitude).all { it.isFinite() && it in KOREA_LONGITUDE } &&
+        (navigationRemainingMeters == null || (navigationRemainingMeters.isFinite() && navigationRemainingMeters in 0.0..3_000_000.0))
 }
 
 /** A station on the route with metrics from real routing (Kakao Mobility), never straight-line distance. */
@@ -138,7 +141,8 @@ class GatewayRouteCorridor(
         // Validated finite numbers, an enum code and a pattern-checked token need no JSON string escaping.
         val body = """{"origin":{"latitude":${query.originLatitude},"longitude":${query.originLongitude}},""" +
             """"destination":{"latitude":${query.destinationLatitude},"longitude":${query.destinationLongitude}},""" +
-            """"fuel":"${query.fuel.providerCode}"""" + (token?.let { ""","corridorToken":"$it"""" } ?: "") + "}"
+            """"fuel":"${query.fuel.providerCode}"""" + (token?.let { ""","corridorToken":"$it"""" } ?: "") +
+            (query.navigationRemainingMeters?.let { ""","navigationRemainingMeters":$it""" } ?: "") + "}"
         try {
             val response = withTimeout(16_000) { runInterruptible(Dispatchers.IO) { transport.post(endpoint, body) } }
             if (response.status == 429) return unavailable(CorridorFailure.QUOTA_EXHAUSTED)
@@ -157,12 +161,10 @@ class GatewayRouteCorridor(
             val snapshot = requireNotNull(doc.snapshot)
             val issued = requireNotNull(doc.corridorToken)
             require(TOKEN_PATTERN.matches(issued))
-            val now = epochSeconds()
-            if (now >= snapshot.expiresAtEpochSeconds) return unavailable(CorridorFailure.STALE)
-            require(snapshot.fetchedAtEpochSeconds in 0..now && snapshot.expiresAtEpochSeconds > snapshot.fetchedAtEpochSeconds &&
-                snapshot.expiresAtEpochSeconds - snapshot.fetchedAtEpochSeconds <= MAX_SNAPSHOT_SECONDS)
-            require(snapshot.stationsObservedAtEpochSeconds in 0..snapshot.fetchedAtEpochSeconds &&
-                snapshot.fetchedAtEpochSeconds - snapshot.stationsObservedAtEpochSeconds <= MAX_OBSERVATION_AGE_SECONDS)
+            val window = localWindow(snapshot.fetchedAtEpochSeconds, snapshot.expiresAtEpochSeconds, epochSeconds(),
+                MAX_SNAPSHOT_SECONDS) ?: return unavailable(CorridorFailure.STALE)
+            val observationAge = snapshot.fetchedAtEpochSeconds - snapshot.stationsObservedAtEpochSeconds
+            require(snapshot.stationsObservedAtEpochSeconds >= 0 && observationAge in 0..MAX_OBSERVATION_AGE_SECONDS)
             require(snapshot.remainingDistanceMeters >= 0 && snapshot.remainingDurationSeconds >= 0)
             require(snapshot.stations.size <= MAX_STATIONS && snapshot.stations.map { it.id }.distinct().size == snapshot.stations.size)
             snapshot.stations.forEach { row ->
@@ -173,7 +175,11 @@ class GatewayRouteCorridor(
                 require(row.roadDistanceMeters >= row.alongRouteMeters && row.etaSeconds >= 0 && row.detourSeconds >= 0)
             }
             lastTrip = trip to issued
-            return RouteCorridorResult.Available(snapshot.copy(stations = snapshot.stations.toList()))
+            return RouteCorridorResult.Available(snapshot.copy(
+                fetchedAtEpochSeconds = window.fetchedAtEpochSeconds,
+                expiresAtEpochSeconds = window.expiresAtEpochSeconds,
+                stationsObservedAtEpochSeconds = window.fetchedAtEpochSeconds - observationAge,
+                stations = snapshot.stations.toList()))
         } catch (_: TimeoutCancellationException) {
             return unavailable(CorridorFailure.NETWORK)
         } catch (cancelled: CancellationException) {

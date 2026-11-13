@@ -48,6 +48,14 @@ MAX_CORRIDORS = 256
 DISCOVER_RESERVE = 60
 TOKEN_BYTES = 16
 TOKEN_PATTERN = re.compile(r'[A-Za-z0-9_-]{22}')
+PRIORITIES = ('RECOMMEND', 'DISTANCE')
+# The same agreement rule the app applies between this routed path and the vehicle navigation's route.
+AGREEMENT_MIN_M = 2000
+AGREEMENT_RATIO = 0.15
+
+
+def agreement_m(navigation_m):
+    return max(AGREEMENT_MIN_M, navigation_m * AGREEMENT_RATIO)
 EARTH_M = 6371008.8
 
 
@@ -157,9 +165,11 @@ class KakaoDirections:
     def configured(self):
         return bool(self._key and self._key.strip())
 
-    def route(self, origin, destination, waypoint=None, geometry=False):
+    def route(self, origin, destination, waypoint=None, geometry=False, priority='RECOMMEND'):
+        if priority not in PRIORITIES:
+            raise ValueError('priority')
         params = dict(origin=f'{origin[1]},{origin[0]}', destination=f'{destination[1]},{destination[0]}',
-                      priority='RECOMMEND', summary='false' if geometry else 'true')
+                      priority=priority, summary='false' if geometry else 'true')
         if waypoint is not None:
             params['waypoints'] = f'{waypoint[1]},{waypoint[0]}'
         url = KAKAO_DIRECTIONS + '?' + urllib.parse.urlencode(params)
@@ -250,7 +260,7 @@ class RouteCorridor:
         def error(code, reason):
             return code, dict(schemaVersion=1, status='unavailable', reason=reason)
         try:
-            origin, destination, fuel, token = self._validate(query)
+            origin, destination, fuel, token, navigation_m = self._validate(query)
         except (ValueError, TypeError, KeyError):
             return error(400, 'INVALID_QUERY')
         if not self.routing.configured:
@@ -264,8 +274,9 @@ class RouteCorridor:
             corridor = self._corridors.get(token) if token else None
         try:
             if (corridor is None or corridor['destination'] != destination or corridor['fuel'] != fuel or
-                    corridor['route'].project(*origin)[1] > OFF_ROUTE_M):
-                corridor = self._build(origin, destination, fuel, now)
+                    corridor['route'].project(*origin)[1] > OFF_ROUTE_M or
+                    self._unhinted_mismatch(corridor, origin, navigation_m)):
+                corridor = self._build(origin, destination, fuel, now, navigation_m)
                 with self._lock:
                     self._corridors[corridor['token']] = corridor
                     while len(self._corridors) > MAX_CORRIDORS:
@@ -278,7 +289,8 @@ class RouteCorridor:
 
     @staticmethod
     def _validate(query):
-        if (not isinstance(query, dict) or set(query) - {'corridorToken'} != {'origin', 'destination', 'fuel'} or
+        if (not isinstance(query, dict) or
+                set(query) - {'corridorToken', 'navigationRemainingMeters'} != {'origin', 'destination', 'fuel'} or
                 query['fuel'] not in FUELS):
             raise ValueError('query')
         token = query.get('corridorToken')
@@ -293,12 +305,37 @@ class RouteCorridor:
             if not katec.in_korea(lat, lon):
                 raise ValueError('outside Korea')
             points.append((lat, lon))
-        return points[0], points[1], query['fuel'], token
+        navigation_m = query.get('navigationRemainingMeters')
+        if navigation_m is not None:
+            navigation_m = _num(navigation_m, 0, 3_000_000)
+        return points[0], points[1], query['fuel'], token, navigation_m
 
-    def _build(self, origin, destination, fuel, now):
+    @staticmethod
+    def _unhinted_mismatch(corridor, origin, navigation_m):
+        """A corridor built without the navigation's distance is rebuilt once that distance shows it took
+        another road; a hinted corridor already chose the closest routing and is kept."""
+        if navigation_m is None or corridor['hinted']:
+            return False
+        route = corridor['route']
+        remaining = route.distance - route.project(*origin)[0]
+        return abs(remaining - navigation_m) > agreement_m(navigation_m)
+
+    def _base_route(self, origin, destination, now, navigation_m):
+        """Kakao's recommended route, unless the vehicle navigation reports a remaining distance it does not
+        match; then the shortest-distance route is tried too and the closer one kept. Matching distance is a
+        hint that both follow the same roads, not proof: the app still enforces the agreement itself."""
         if not self.routing_quota.consume(now):
             raise ProviderFailure('ROUTING_QUOTA_EXHAUSTED')
-        base = self.routing.route(origin, destination, geometry=True)
+        best = ('RECOMMEND', self.routing.route(origin, destination, geometry=True))
+        if navigation_m is None or abs(best[1].distance - navigation_m) <= agreement_m(navigation_m):
+            return best
+        if not self.routing_quota.consume(now):
+            raise ProviderFailure('ROUTING_QUOTA_EXHAUSTED')
+        shortest = ('DISTANCE', self.routing.route(origin, destination, geometry=True, priority='DISTANCE'))
+        return min(best, shortest, key=lambda option: abs(option[1].distance - navigation_m))
+
+    def _build(self, origin, destination, fuel, now, navigation_m=None):
+        priority, base = self._base_route(origin, destination, now, navigation_m)
         centres = sample_centres(base)
         # Snapshot cached samples once: exactly the misses counted here are fetched, so a cache entry
         # expiring in between can never turn into an unreserved provider call.
@@ -333,7 +370,8 @@ class RouteCorridor:
                 chosen.append(min(inside, key=lambda s: (s['lateral'], s['priceKrwPerLiter'])))
 
         def via(station):
-            routed = self.routing.route(origin, destination, waypoint=(station['latitude'], station['longitude']))
+            routed = self.routing.route(origin, destination, waypoint=(station['latitude'], station['longitude']),
+                                        priority=priority)
             return dict(station, detour_s=max(0.0, routed.duration - base.duration),
                         detour_m=max(0.0, routed.distance - base.distance))
         if chosen and not self.routing_quota.consume(now, units=len(chosen)):
@@ -341,6 +379,7 @@ class RouteCorridor:
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
             measured = list(pool.map(via, chosen))
         return dict(token=secrets.token_urlsafe(TOKEN_BYTES), created=now, destination=destination, fuel=fuel,
+                    priority=priority, hinted=navigation_m is not None,
                     observed=min(at for at, _ in samples), route=base, candidates=measured)
 
     def _cached_sample(self, centre, fuel, now):
@@ -385,6 +424,7 @@ class RouteCorridor:
                        remainingDurationSeconds=int(round(max(0.0, route.duration - progress_s)))),
             coverage=dict(verified=True, sampleSpacingMeters=SAMPLE_SPACING_M, searchRadiusMeters=SEARCH_RADIUS_M),
             provenance=dict(stationProvider='OPINET', stationEndpoint='aroundAll',
-                            routingProvider='KAKAO_MOBILITY', coordinateSystem='WGS84'),
+                            routingProvider='KAKAO_MOBILITY', routingPriority=corridor['priority'],
+                            coordinateSystem='WGS84'),
             stations=stations,
         )

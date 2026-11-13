@@ -36,8 +36,8 @@ STATIONS = {
 PRICES = {'S1': 1700, 'S2': 1600, 'S3': 1500, 'S4': 1400, 'S5': 1750}
 
 
-def straight_route_json(origin, destination, waypoint, geometry, extra_m=1000, extra_s=120, code=0):
-    distance = haversine(*origin, *destination)
+def straight_route_json(origin, destination, waypoint, geometry, extra_m=1000, extra_s=120, code=0, base_extra_m=0):
+    distance = haversine(*origin, *destination) + base_extra_m
     duration = distance / SPEED
     if waypoint is not None:
         distance, duration = distance + extra_m, duration + extra_s
@@ -64,6 +64,7 @@ class CorridorTests(unittest.TestCase):
         self.kakao_failure = None
         self.result_code = 0
         self.empty_everywhere = False
+        self.recommend_extra_m = 0
 
         def kakao(url, key, timeout, limit):
             self.kakao_calls.append((url, key))
@@ -73,7 +74,8 @@ class CorridorTests(unittest.TestCase):
             point = lambda text: tuple(reversed([float(v) for v in text.split(',')]))
             return straight_route_json(point(q['origin']), point(q['destination']),
                                        point(q['waypoints']) if 'waypoints' in q else None,
-                                       q['summary'] == 'false', code=self.result_code)
+                                       q['summary'] == 'false', code=self.result_code,
+                                       base_extra_m=self.recommend_extra_m if q['priority'] == 'RECOMMEND' else 0)
 
         def opinet(url, timeout, limit):
             self.opinet_calls.append(url)
@@ -98,12 +100,49 @@ class CorridorTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def query(self, origin=ORIGIN, destination=DEST, fuel='B027', token=None):
+    def query(self, origin=ORIGIN, destination=DEST, fuel='B027', token=None, navigation_m=None):
         query = dict(origin=dict(latitude=origin[0], longitude=origin[1]),
                      destination=dict(latitude=destination[0], longitude=destination[1]), fuel=fuel)
         if token is not None:
             query['corridorToken'] = token
+        if navigation_m is not None:
+            query['navigationRemainingMeters'] = navigation_m
         return query
+
+    def priorities(self):
+        return [parse_qs(urlsplit(u).query)['priority'][0] for u, _ in self.kakao_calls]
+
+    def test_route_matching_the_navigation_is_preferred(self):
+        straight = haversine(*ORIGIN, *DEST)
+        self.recommend_extra_m = 8000   # Kakao's recommendation takes another road than the vehicle navigation
+        status, result = self.corridor.measure(self.query(navigation_m=straight))
+        self.assertEqual(200, status)
+        self.assertEqual('DISTANCE', result['provenance']['routingPriority'])
+        self.assertAlmostEqual(straight, result['route']['remainingDistanceMeters'], delta=2)
+        # Both base routes, then the via-station routes on the chosen priority only.
+        self.assertEqual(['RECOMMEND', 'DISTANCE', 'DISTANCE', 'DISTANCE'], self.priorities())
+
+    def test_unhinted_corridor_is_rebuilt_once_the_navigation_distance_disagrees(self):
+        straight = haversine(*ORIGIN, *DEST)
+        self.recommend_extra_m = 8000
+        token = self.corridor.measure(self.query())[1]['corridorToken']
+        result = self.corridor.measure(self.query(token=token, navigation_m=straight))[1]
+        self.assertEqual('DISTANCE', result['provenance']['routingPriority'])
+        self.assertNotEqual(token, result['corridorToken'])
+        calls = len(self.kakao_calls)
+        again = self.corridor.measure(self.query(token=result['corridorToken'], navigation_m=straight))[1]
+        self.assertEqual(result['corridorToken'], again['corridorToken'])
+        self.assertEqual(calls, len(self.kakao_calls))
+
+    def test_recommended_route_is_kept_when_it_agrees_or_nothing_is_known(self):
+        straight = haversine(*ORIGIN, *DEST)
+        self.recommend_extra_m = 1500   # inside max(2 km, 15 %)
+        result = self.corridor.measure(self.query(navigation_m=straight))[1]
+        self.assertEqual('RECOMMEND', result['provenance']['routingPriority'])
+        self.recommend_extra_m = 8000
+        result = self.corridor.measure(self.query())[1]
+        self.assertEqual('RECOMMEND', result['provenance']['routingPriority'])
+        self.assertNotIn('DISTANCE', self.priorities())
 
     def test_stations_along_route_carry_routed_metrics(self):
         status, result = self.corridor.measure(self.query())
@@ -243,7 +282,9 @@ class CorridorTests(unittest.TestCase):
                dict(good, origin=dict(latitude=True, longitude=127.0)),
                dict(good, origin=dict(latitude=37.4, longitude=127.0, altitude=0)),
                dict(good, destination=dict(latitude=35.0, longitude=140.0)), [], 'x',
-               dict(good, corridorToken='short'), dict(good, corridorToken=1), dict(good, corridorToken='A' * 21 + '/')]
+               dict(good, corridorToken='short'), dict(good, corridorToken=1), dict(good, corridorToken='A' * 21 + '/'),
+               dict(good, navigationRemainingMeters=-1), dict(good, navigationRemainingMeters='1000'),
+               dict(good, navigationRemainingMeters=float('nan')), dict(good, navigationRemainingMeters=True)]
         for query in bad:
             self.assertEqual(400, self.corridor.measure(query)[0], query)
         self.assertEqual(([], []), (self.kakao_calls, self.opinet_calls))

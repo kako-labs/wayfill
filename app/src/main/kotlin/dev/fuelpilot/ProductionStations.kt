@@ -223,7 +223,8 @@ class ProductionStationRepository internal constructor(
         val route = requireNotNull(routeRead.route)
         val latitude = route.destinationLatitude ?: return fail(ProductionStationFailure.ROAD_METRICS_UNAVAILABLE)
         val longitude = route.destinationLongitude ?: return fail(ProductionStationFailure.ROAD_METRICS_UNAVAILABLE)
-        val query = RouteCorridorQuery(origin.latitude, origin.longitude, latitude, longitude, fuel)
+        val query = RouteCorridorQuery(origin.latitude, origin.longitude, latitude, longitude, fuel,
+            navigationRemainingMeters = route.remainingDistanceKm * 1000.0)
         val snapshot = when (val read = corridor.measure(query)) {
             is RouteCorridorResult.Available -> read.snapshot
             is RouteCorridorResult.Unavailable -> return when (read.reason) {

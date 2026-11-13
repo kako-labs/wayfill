@@ -20,7 +20,8 @@ class GatewayRouteCorridorTest {
         val offline = GatewayRouteCorridor(null, GatewayTransport { _, _ -> error("network") })
         assertEquals(RouteCorridorResult.Unavailable(CorridorFailure.UNCONFIGURED), offline.measure(query))
         val configured = GatewayRouteCorridor(GatewayConfig("https://example.com"), GatewayTransport { _, _ -> error("network") })
-        listOf(query.copy(originLatitude = Double.NaN), query.copy(destinationLongitude = 140.0)).forEach {
+        listOf(query.copy(originLatitude = Double.NaN), query.copy(destinationLongitude = 140.0),
+            query.copy(navigationRemainingMeters = -1.0), query.copy(navigationRemainingMeters = Double.POSITIVE_INFINITY)).forEach {
             assertEquals(RouteCorridorResult.Unavailable(CorridorFailure.INVALID_QUERY), configured.measure(it))
         }
     }
@@ -37,7 +38,7 @@ class GatewayRouteCorridorTest {
     @Test fun staleFutureMismatchedOrImpossibleSnapshotsFailClosed() = runBlocking {
         assertEquals(RouteCorridorResult.Unavailable(CorridorFailure.STALE), corridor(document(), now = 1030).measure(query))
         val invalid = listOf(
-            document(snapshot.copy(fetchedAtEpochSeconds = 1002)),
+            document(snapshot.copy(fetchedAtEpochSeconds = 1007, expiresAtEpochSeconds = 1030)),
             document(snapshot.copy(expiresAtEpochSeconds = 1100)),
             document(snapshot.copy(stationsObservedAtEpochSeconds = 1)),
             document().copy(routingProvider = "STRAIGHT_LINE"),
@@ -54,6 +55,17 @@ class GatewayRouteCorridorTest {
         invalid.forEach { doc ->
             assertEquals(doc.toString(), RouteCorridorResult.Unavailable(CorridorFailure.INVALID_RESPONSE), corridor(doc).measure(query))
         }
+    }
+
+    @Test fun snapshotIsRestampedToTheDeviceClock() = runBlocking {
+        // Device one second behind the gateway: accepted; times move to the device clock, lifetime not extended.
+        val behind = corridor(document(), now = 999).measure(query) as RouteCorridorResult.Available
+        assertEquals(999L, behind.snapshot.fetchedAtEpochSeconds)
+        assertEquals(1029L, behind.snapshot.expiresAtEpochSeconds)
+        assertEquals(989L, behind.snapshot.stationsObservedAtEpochSeconds)
+        val aged = corridor(document(), now = 1020).measure(query) as RouteCorridorResult.Available
+        assertEquals(1020L, aged.snapshot.fetchedAtEpochSeconds)
+        assertEquals(1030L, aged.snapshot.expiresAtEpochSeconds)
     }
 
     @Test fun serverReasonsMapWithoutLeakingBodies() = runBlocking {
@@ -81,6 +93,12 @@ class GatewayRouteCorridorTest {
         assertFalse(bodies[0].contains("corridorToken"))
         assertTrue(bodies[1].endsWith(""""fuel":"B027","corridorToken":"$token"}"""))
         assertFalse(bodies[2].contains("corridorToken"))
+    }
+
+    @Test fun navigationRemainingDistanceIsSentWhenKnown() = runBlocking {
+        var body = ""
+        corridor(document()) { _, b -> body = b }.measure(query.copy(navigationRemainingMeters = 23000.0))
+        assertTrue(body, body.endsWith(""""fuel":"B027","navigationRemainingMeters":23000.0}"""))
     }
 
     @Test fun configDerivesBothEndpointsFromOneOrigin() {

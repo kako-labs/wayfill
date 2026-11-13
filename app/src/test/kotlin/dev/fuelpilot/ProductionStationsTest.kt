@@ -176,7 +176,7 @@ class ProductionStationsTest {
         }
         val repo = corridorRepository(corridor)
         val read = repo.readStationsFor(origin, destinationRoute) as ProductionStationRead.Available
-        assertEquals(RouteCorridorQuery(37.0, 127.0, 37.4979, 127.0276, StationFuel.GASOLINE), asked)
+        assertEquals(RouteCorridorQuery(37.0, 127.0, 37.4979, 127.0276, StationFuel.GASOLINE, 100_000.0), asked)
         val candidate = read.stations.single()
         assertEquals("c1", candidate.id)
         assertEquals(12.4, candidate.distanceFromCurrentKm, 1e-9)
