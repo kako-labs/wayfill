@@ -8,4 +8,5 @@ set -a
 # shellcheck disable=SC1090
 . "$env_file"
 set +a
-exec python3 -m server.gateway
+# WAYFILL_PYTHON pins the interpreter (e.g. /usr/bin/python3) so version managers on PATH cannot swap it.
+exec "${WAYFILL_PYTHON:-python3}" -m server.gateway
