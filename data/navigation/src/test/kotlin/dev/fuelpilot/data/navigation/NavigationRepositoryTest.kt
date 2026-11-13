@@ -4,6 +4,7 @@ import dev.fuelpilot.model.ActiveRoute
 import dev.fuelpilot.model.NavigationTargetProvenance
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -169,6 +170,19 @@ class NavigationRepositoryTest {
         assertTrue(!NavigationObservedTarget(37.6, 127.0, "주유소티파니블루", "", null, "").matches(station))
     }
 
+    @Test fun stationAlreadyOnTheRouteIsRecognisedEvenWithoutWaypointCoordinates(): Unit = runBlocking {
+        val fake = FakePort(NaviRead.Available(null), NaviCommandStatus.FAILED, true)
+        val repository = PleosNavigationRepository(fake, { true }, { true })
+        val station = target(name = "주유소티파니블루")
+        assertNull(repository.isWaypoint(station))
+        fake.waypoints = NaviRead.Available(listOf(NavigationObservedTarget(0.0, 0.0, "주유소티파니블루", "", null, "")))
+        assertEquals(true, repository.isWaypoint(station))
+        assertEquals(false, repository.isWaypoint(target(name = "다른주유소")))
+        fake.waypoints = NaviRead.Unavailable
+        assertNull(repository.isWaypoint(station))
+        assertNull(PleosNavigationRepository(fake, { false }, { true }).isWaypoint(station))
+    }
+
     private class FakePort(
         private val route: NaviRead<NaviRouteSnapshot?>,
         private val command: NaviCommandStatus,
@@ -176,6 +190,8 @@ class NavigationRepositoryTest {
     ) : NaviHelperPort {
         var lastTarget: NavigationTarget? = null
         var routeReads = 0
+        var waypoints: NaviRead<List<NavigationObservedTarget>> = NaviRead.Unsupported
+        override suspend fun readWaypoints() = waypoints
         override fun isSupported() = supported
         override suspend fun readRoute(): NaviRead<NaviRouteSnapshot?> {
             routeReads++

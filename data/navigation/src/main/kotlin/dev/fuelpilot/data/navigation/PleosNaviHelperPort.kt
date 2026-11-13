@@ -112,15 +112,22 @@ class PleosNaviHelperPort(
         }
     }
 
+    override suspend fun readWaypointCount(): NaviRead<Int> = when (val read = readWaypoints()) {
+        is NaviRead.Available -> NaviRead.Available(read.value.size)
+        NaviRead.Unavailable -> NaviRead.Unavailable
+        NaviRead.Unsupported -> NaviRead.Unsupported
+    }
+
     @SuppressLint("MissingPermission")
-    override suspend fun readWaypointCount(): NaviRead<Int> = operations.withLock {
+    override suspend fun readWaypoints(): NaviRead<List<NavigationObservedTarget>> = operations.withLock {
         if (!hasPermission(NAVI_ROUTE_PERMISSION)) return@withLock NaviRead.Unsupported
-        runWithRetries<NaviRead<Int>>(
+        runWithRetries<NaviRead<List<NavigationObservedTarget>>>(
             NaviRead.Unavailable, NaviRead.Unsupported, NaviRead.Unavailable,
         ) { complete, _, _ ->
             val listener = object : NaviHelperEventListener {
-                override fun onWayPointInfo(waypointInfo: List<WaypointInfo>) =
-                    complete(NaviRead.Available(waypointInfo.size))
+                override fun onWayPointInfo(waypointInfo: List<WaypointInfo>) = complete(NaviRead.Available(
+                    waypointInfo.map { NavigationObservedTarget(it.latitude, it.longitude, it.name, it.poiId, it.poiSubId, it.poiProvider) }
+                ))
                 override fun onError(errorCode: NaviErrorCode) = complete(NaviRead.Unavailable)
             }
             Session(listener) { it.getWaypointInfo() }

@@ -101,7 +101,15 @@ class AppCoordinator(private val dependencies: AppDependencies) {
                 navigationTargets = candidates.mapNotNull { candidate ->
                     candidate.toNavigationTarget()?.let { candidate.id to it }
                 }.toMap()
-                mapper.map(AssistPresentationInput(engine.evaluate(input), input, activeRoute?.id))
+                val mapped = mapper.map(AssistPresentationInput(engine.evaluate(input), input, activeRoute?.id))
+                // After "add as waypoint" the navigation starts a new route; the same station must not be offered
+                // again (a second tap would add it twice). Ask the navigation whether it is already a waypoint.
+                val recommendedId = mapped.route.recommended?.id
+                val target = recommendedId?.let { navigationTargets[it] }
+                if (activeRoute != null && mapped.recommendationKey != null && target != null &&
+                    readOr(null) { dependencies.navigation.isWaypoint(target) } == true
+                ) mapped.copy(recommendationKey = null, targetScreen = null, waypointStationId = recommendedId)
+                else mapped
             }
         }
         intents += AssistIntent.PresentationChanged(presentation, minimumReserveKm = reserve, navigationTargets = navigationTargets)

@@ -226,6 +226,8 @@ private val KoreanBoundary = Regex("(?<=[가-힣])(?=[가-힣])")
                             }
                             CompanionButton("나중에","${actionPrefix}_later",false,Modifier.fillMaxWidth()) { onIntent(AssistIntent.Continue) }
                         }
+                        if(state.ui.routeStation!=null && state.ui.routeStation==route.recommended?.id)
+                            Label("경유지로 안내 중이에요",22,Modifier.align(Alignment.CenterHorizontally).testTag("${actionPrefix}_on_route"),color=FuelPilotColors.Gold,bold=true,lines=1)
                         Label("설정한 여유거리 ${state.persisted.minimumReserveKm} km",18,Modifier.align(Alignment.CenterHorizontally),color=FuelPilotColors.Muted,lines=1)
                     }
                 }

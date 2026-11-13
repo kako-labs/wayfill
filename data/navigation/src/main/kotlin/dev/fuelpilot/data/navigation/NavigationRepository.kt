@@ -137,6 +137,8 @@ interface NavigationRepository {
     suspend fun addWaypoint(request: WaypointRequest): WaypointResult
     suspend fun setDestination(request: WaypointRequest): WaypointResult = WaypointResult.Unsupported(request.requestId, request.stationId)
     suspend fun capabilities(): NavigationCapabilities = NavigationCapabilities()
+    /** Whether [target] is already a waypoint of the active route; null when the navigation cannot say. */
+    suspend fun isWaypoint(target: NavigationTarget): Boolean? = null
 }
 
 object UnsupportedNavigationRepository : NavigationRepository {
@@ -181,6 +183,8 @@ interface NaviHelperPort {
     /** Side-effect-free trip preview to one point; the active route is not changed. */
     suspend fun measureTrip(latitude: Double, longitude: Double): NaviRead<NaviTrip> = NaviRead.Unsupported
     suspend fun readCurrentLocation(): NaviRead<NaviPosition> = NaviRead.Unsupported
+    /** The active route's waypoints as the navigation reports them (PLEOS leaves their coordinates 0/0). */
+    suspend fun readWaypoints(): NaviRead<List<NavigationObservedTarget>> = NaviRead.Unsupported
 }
 
 class PleosNavigationRepository(
@@ -194,6 +198,14 @@ class PleosNavigationRepository(
             is NaviRead.Available -> read.value?.let(::mapRoute) ?: RouteResult.Available(null)
             NaviRead.Unavailable -> RouteResult.Unavailable
             NaviRead.Unsupported -> RouteResult.Unsupported
+        }
+    }
+
+    override suspend fun isWaypoint(target: NavigationTarget): Boolean? {
+        if (!port.isSupported() || !hasRoutePermission()) return null
+        return when (val read = port.readWaypoints()) {
+            is NaviRead.Available -> read.value.any { it.matches(target) }
+            NaviRead.Unavailable, NaviRead.Unsupported -> null
         }
     }
 

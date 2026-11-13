@@ -55,6 +55,23 @@ class AppDependenciesTest {
         assertEquals(AssistAvailability.READY,result.availability)
     }
 
+    @Test fun aStationAlreadyAddedAsWaypointIsShownAsDoneNotOfferedAgain() = runTest {
+        var onRoute = true
+        val base = routePort()
+        val navigation = object : NavigationRepository by base {
+            override suspend fun isWaypoint(target: NavigationTarget): Boolean? { assertEquals("a", target.stationId); return onRoute }
+        }
+        val deps = fixture(navigation = navigation)
+        val added = deps.coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertNull(added.recommendationKey)
+        assertEquals("a", added.waypointStationId)
+        assertEquals("a", added.route.recommended?.id)
+        onRoute = false
+        val offered = deps.coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertNotNull(offered.recommendationKey)
+        assertNull(offered.waypointStationId)
+    }
+
     @Test fun unknownFuelIsReportedAsASettingsTaskNotAStationOutage() = runTest {
         val base = fixture()
         val noStations = object : ContextualStationRepository {

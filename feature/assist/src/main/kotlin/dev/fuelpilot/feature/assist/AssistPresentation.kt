@@ -35,6 +35,8 @@ data class AssistPresentation(
     val availability: AssistAvailability,
     /** Inputs that were read but not fresh. Empty when the cause is unknown or nothing was read. */
     val blockedBy: Set<AssistSignal> = emptySet(),
+    /** The recommended station is already a waypoint of the active route: shown as done, never offered again. */
+    val waypointStationId: String? = null,
 )
 
 /** Vehicle, location and route are fine; only the station source is missing. */

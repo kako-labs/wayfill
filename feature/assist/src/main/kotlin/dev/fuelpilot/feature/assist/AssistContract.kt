@@ -272,7 +272,7 @@ private fun resolveScreen(state: AssistViewState): AssistViewState {
             celebration = state.ui.celebration.takeIf { state.ui.motion == Motion.Parked },
             seenIds = stored.processedRefuels.keys,
             pendingStation = state.pending?.stationId,
-            routeStation = (result as? WaypointResult.Succeeded)?.stationId,
+            routeStation = (result as? WaypointResult.Succeeded)?.stationId ?: presentation.waypointStationId,
             error = result?.errorMessage(),
             detailsAvailable = state.ui.motion == Motion.Parked && recommendation,
             statusMessage = presentation.statusMessage(),
