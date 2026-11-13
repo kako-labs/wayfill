@@ -277,9 +277,18 @@ class RouteCorridor:
         with self._lock:
             for stale in [k for k, c in self._corridors.items() if now - c['created'] >= CORRIDOR_TTL_S]:
                 del self._corridors[stale]
-            if len(self._token_locks) > 4 * MAX_CORRIDORS:
-                self._token_locks = {k: v for k, v in self._token_locks.items() if k in self._corridors or v.locked()}
-            token_lock = self._token_locks.setdefault(token, threading.Lock())
+            # [lock, users]: an entry lives exactly while some request holds or waits for it.
+            entry = self._token_locks.setdefault(token, [threading.Lock(), 0])
+            entry[1] += 1
+        try:
+            return self._measure_locked(entry[0], token, origin, destination, fuel, navigation_m, now, client, error)
+        finally:
+            with self._lock:
+                entry[1] -= 1
+                if entry[1] == 0 and self._token_locks.get(token) is entry:
+                    del self._token_locks[token]
+
+    def _measure_locked(self, token_lock, token, origin, destination, fuel, navigation_m, now, client, error):
         try:
             with token_lock:
                 with self._lock:

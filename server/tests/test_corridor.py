@@ -225,6 +225,7 @@ class CorridorTests(unittest.TestCase):
         self.assertEqual({token}, {result['corridorToken'] for _, result in results})
         base_routes = [u for u, _ in self.kakao_calls if 'summary=false' in u]
         self.assertEqual(1, len(base_routes))
+        self.assertEqual({}, self.corridor._token_locks)  # no request left: no lock kept
 
     def test_corridor_expires(self):
         token = self.corridor.measure(self.query())[1]['corridorToken']
