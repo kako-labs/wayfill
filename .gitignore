@@ -7,6 +7,8 @@ android/.gradle/
 local.properties
 android/local.properties
 *.apk
+# The contest submission APK (team_app_release.apk) is committed on purpose.
+!apk/*_release.apk
 *.aab
 *.zip
 captures/
