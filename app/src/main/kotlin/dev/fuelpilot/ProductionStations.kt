@@ -79,8 +79,10 @@ fun createProductionStations(
     coordinateTransform: VerifiedStationCoordinateTransform = UnverifiedStationCoordinateTransform,
     fuel: StationFuel? = null,
     epochSeconds: () -> Long = { System.currentTimeMillis() / 1000 },
+    /** Read when [fuel] is null, e.g. from the vehicle's own INFO_FUEL_TYPE. Null result stays unverified. */
+    fuelSource: (suspend () -> StationFuel?)? = null,
 ): ProductionStationRepository = ProductionStationRepository(
-    location, navigation, discovery, roadMetrics, coordinateTransform, fuel, epochSeconds,
+    location, navigation, discovery, roadMetrics, coordinateTransform, fuel, epochSeconds, fuelSource,
 )
 
 /** The sole production join from a raw source catalog into decision-engine candidates. */
@@ -92,6 +94,7 @@ class ProductionStationRepository internal constructor(
     private val coordinateTransform: VerifiedStationCoordinateTransform,
     private val fuel: StationFuel?,
     private val epochSeconds: () -> Long,
+    private val fuelSource: (suspend () -> StationFuel?)? = null,
 ) : ContextualStationRepository {
     override suspend fun findStations(): StationResult = when (val read = readStations()) {
         is ProductionStationRead.Available -> StationResult.Available(read.stations)
@@ -115,7 +118,7 @@ class ProductionStationRepository internal constructor(
         fun fail(reason: ProductionStationFailure, discoveryReason: DiscoveryFailure? = null) =
             ProductionStationRead.Unavailable(reason, discoveryReason)
         try {
-            val verifiedFuel = fuel ?: return fail(ProductionStationFailure.FUEL_UNVERIFIED)
+            val verifiedFuel = fuel ?: fuelSource?.invoke() ?: return fail(ProductionStationFailure.FUEL_UNVERIFIED)
             val origin = (location.readLocation() as? LocationResult.Available)?.location
                 ?: return fail(ProductionStationFailure.LOCATION_UNAVAILABLE)
             if (!validLocation(origin)) return fail(ProductionStationFailure.LOCATION_UNAVAILABLE)
@@ -136,7 +139,7 @@ class ProductionStationRepository internal constructor(
             }
             if (!fresh(catalog.fetchedAtEpochSeconds, catalog.expiresAtEpochSeconds, 300))
                 return fail(ProductionStationFailure.STALE_CATALOG)
-            if (!validCatalog(catalog)) return fail(ProductionStationFailure.INVALID_CATALOG)
+            if (!validCatalog(catalog, verifiedFuel)) return fail(ProductionStationFailure.INVALID_CATALOG)
             val request = RoadMetricsRequest(origin, route, catalog)
             val measured = roadMetrics.measure(request)
                 ?: return fail(ProductionStationFailure.ROAD_METRICS_UNAVAILABLE)
@@ -161,7 +164,7 @@ class ProductionStationRepository internal constructor(
                 val raw = catalogById.getValue(metric.stationId)
                 FuelStationCandidate(raw.id, raw.name, metric.roadDistanceKm, metric.alongRouteKm,
                     metric.etaMinutes, metric.detourMinutes, OpenStatus.UNKNOWN,
-                    fuelCompatible = raw.fuel == fuel, businessInfoFresh = false,
+                    fuelCompatible = raw.fuel == verifiedFuel, businessInfoFresh = false,
                     navigationTarget = metric.navigationTarget)
             })
         } catch (cancelled: CancellationException) {
@@ -176,7 +179,7 @@ class ProductionStationRepository internal constructor(
         return fetched >= 0 && fetched <= now && expires > now && expires > fetched && expires - fetched <= maxAge
     }
 
-    private fun validCatalog(catalog: RawStationCatalog): Boolean =
+    private fun validCatalog(catalog: RawStationCatalog, fuel: StationFuel): Boolean =
         catalog.provenance.let { it.provider == "OPINET" && it.endpoint == "aroundAll" &&
             it.coordinateSystem == CoordinateSystem.KATEC && !it.roadMetricsVerified } &&
             catalog.stations.size <= 200 && catalog.stations.map { it.id }.distinct().size == catalog.stations.size &&

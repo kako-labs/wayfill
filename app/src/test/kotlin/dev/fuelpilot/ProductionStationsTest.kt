@@ -22,6 +22,15 @@ class ProductionStationsTest {
         assertSame(StationResult.Unavailable, repo.findStations())
     }
 
+    @Test fun vehicleFuelSourceSuppliesTheProductWhenNoFixedFuelIsGiven() = runTest {
+        val unknown = createProductionStations(location, navigation, source { error("Fuel must be verified first") },
+            fuelSource = { null })
+        assertEquals(ProductionStationFailure.FUEL_UNVERIFIED, failure(unknown.readStations()))
+        val known = createProductionStations(location, navigation, source { error("Transform must be verified first") },
+            fuelSource = { StationFuel.GASOLINE }, epochSeconds = { 100 })
+        assertEquals(ProductionStationFailure.COORDINATE_TRANSFORM_UNVERIFIED, failure(known.readStations()))
+    }
+
     @Test fun rawCatalogAloneCannotProduceCandidatesAndTransformIsNeverGuessed() = runTest {
         var discoveries = 0
         val discovery = source { discoveries++; StationDiscoveryResult.Available(catalog) }

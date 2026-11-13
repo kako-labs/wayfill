@@ -1,6 +1,7 @@
 package dev.fuelpilot.data.energy
 
 import android.car.Car
+import android.car.FuelType
 import android.car.VehicleGear
 import android.car.VehiclePropertyIds
 import android.car.drivingstate.CarUxRestrictions
@@ -29,7 +30,7 @@ class AaosVehiclePropertySource(
     private val maxConnectionAttempts: Int = 2,
     private val retryDelayMs: Long = 150L,
     private val safetyPollMs: Long = 1_000L,
-) : VehiclePropertySource {
+) : VehiclePropertySource, VehicleFuelTypeSource {
     private val appContext = context.applicationContext
 
     init {
@@ -55,6 +56,32 @@ class AaosVehiclePropertySource(
             }
             if (!value.isAvailable()) VehicleSignal.Unavailable
             else VehicleSignal.Available(value.value, value.timestamp)
+        }
+    }
+
+    /** Static INFO_FUEL_TYPE. Unknown entries are dropped; an empty result is Unavailable, never a guess. */
+    override suspend fun readFuelTypes(): VehicleSignal<Set<VehicleFuelType>> {
+        if (!isAutomotive() || !hasPermission(Car.PERMISSION_CAR_INFO)) return VehicleSignal.Unsupported
+        return withCar { car ->
+            val manager = car.getCarManager(Car.PROPERTY_SERVICE) as? CarPropertyManager
+                ?: return@withCar VehicleSignal.Unsupported
+            val type = Array<Int>::class.java
+            val config = try { manager.getCarPropertyConfig(VehiclePropertyIds.INFO_FUEL_TYPE) }
+                catch (_: SecurityException) { return@withCar VehicleSignal.Unsupported }
+                catch (_: Exception) { return@withCar VehicleSignal.Unavailable }
+                ?: return@withCar VehicleSignal.Unsupported
+            if (config.propertyType != type) return@withCar VehicleSignal.Unsupported
+            val value = try {
+                manager.getProperty(type, VehiclePropertyIds.INFO_FUEL_TYPE, GLOBAL_AREA)
+            } catch (_: SecurityException) {
+                return@withCar VehicleSignal.Unsupported
+            } catch (_: Exception) {
+                return@withCar VehicleSignal.Unavailable
+            }
+            if (!value.isAvailable()) return@withCar VehicleSignal.Unavailable
+            val raw = (value.value as? Array<*>)?.filterIsInstance<Int>() ?: return@withCar VehicleSignal.Unavailable
+            val types = raw.mapNotNull { mapFuelType(it) }.toSet()
+            if (types.isEmpty()) VehicleSignal.Unavailable else VehicleSignal.Available(types, value.timestamp)
         }
     }
 
@@ -162,6 +189,21 @@ class AaosVehiclePropertySource(
         VehicleGear.GEAR_REVERSE -> GearSelection.REVERSE
         VehicleGear.GEAR_NEUTRAL -> GearSelection.NEUTRAL
         else -> GearSelection.OTHER
+    }
+
+    private fun mapFuelType(value: Int) = when (value) {
+        FuelType.UNLEADED -> VehicleFuelType.UNLEADED
+        FuelType.LEADED -> VehicleFuelType.LEADED
+        FuelType.DIESEL_1, FuelType.DIESEL_2 -> VehicleFuelType.DIESEL
+        FuelType.BIODIESEL -> VehicleFuelType.BIODIESEL
+        FuelType.E85 -> VehicleFuelType.E85
+        FuelType.LPG -> VehicleFuelType.LPG
+        FuelType.CNG -> VehicleFuelType.CNG
+        FuelType.LNG -> VehicleFuelType.LNG
+        FuelType.ELECTRIC -> VehicleFuelType.ELECTRIC
+        FuelType.HYDROGEN -> VehicleFuelType.HYDROGEN
+        FuelType.OTHER -> VehicleFuelType.OTHER
+        else -> null
     }
 
     private companion object { const val GLOBAL_AREA = 0 }

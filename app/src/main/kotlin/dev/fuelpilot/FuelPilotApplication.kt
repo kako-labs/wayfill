@@ -66,7 +66,10 @@ class FuelPilotApplication : Application() {
         // Public origin only. Missing or invalid configuration never falls back to fixtures.
         val config = BuildConfig.STATION_GATEWAY_ORIGIN.takeIf { it.isNotBlank() }
             ?.let { runCatching { GatewayConfig(it) }.getOrNull() }
-        val stations = createProductionStations(location, navigation, GatewayStationDiscovery(config))
+        // The vehicle's own INFO_FUEL_TYPE selects the provider product; no gasoline default is assumed.
+        val fuelProvider = vehicleSource?.let(::VehicleStationFuelProvider)
+        val stations = createProductionStations(location, navigation, GatewayStationDiscovery(config),
+            fuelSource = fuelProvider?.let { provider -> suspend { provider.read() } })
         AppDependencies(PreferencesAssistStateStore(assistDataStore),
             energy = energy, location = location, navigation = navigation, stations = stations,
             vehicleEvents = vehicleSource?.let(::AaosVehicleEvents) ?: UnsupportedVehicleEvents,
