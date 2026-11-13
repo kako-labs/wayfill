@@ -36,6 +36,8 @@ class AppDependencies(
     val reduceMotion: Flow<Boolean> = emptyFlow(),
     val readTimeoutMs: Long = 5000L,
     val refreshRequests: Flow<Unit> = emptyFlow(),
+    /** The fuel stations are searched for; null result means unknown, which the status copy explains. */
+    val stationFuel: (suspend () -> dev.fuelpilot.data.poi.gateway.StationFuel?)? = null,
 ) {
     init { require(refreshIntervalMs > 0 && navigationTimeoutMs > 0 && readTimeoutMs > 0) }
     fun coordinator() = AppCoordinator(this)

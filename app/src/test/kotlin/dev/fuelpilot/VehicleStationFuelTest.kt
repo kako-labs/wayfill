@@ -10,6 +10,13 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class VehicleStationFuelTest {
+    @Test fun vehicleFuelWinsAndTheDriversChoiceOnlyFillsTheGap() = runTest {
+        assertEquals(StationFuel.DIESEL, StationFuelResolver({ StationFuel.DIESEL }) { StationFuel.GASOLINE }.read())
+        assertEquals(StationFuel.GASOLINE, StationFuelResolver({ null }) { StationFuel.GASOLINE }.read())
+        assertEquals(StationFuel.LPG, StationFuelResolver(null) { StationFuel.LPG }.read())
+        assertNull(StationFuelResolver({ null }) { null }.read())
+    }
+
     @Test fun singleLiquidFuelMapsToTheProviderProduct() {
         assertEquals(StationFuel.GASOLINE, stationFuelFor(setOf(VehicleFuelType.UNLEADED)))
         assertEquals(StationFuel.DIESEL, stationFuelFor(setOf(VehicleFuelType.DIESEL)))

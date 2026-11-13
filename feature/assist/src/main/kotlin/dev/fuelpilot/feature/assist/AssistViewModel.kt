@@ -130,7 +130,8 @@ class AssistViewModel(
 
     private fun visibleState(logical: AssistViewState, durable: AssistStoredState): AssistViewState {
         val refuelUnsaved = logical.ui.refuel?.id?.let { it !in durable.processedRefuels } == true
-        val policyUnsaved = logical.persisted.minimumReserveKm != durable.minimumReserveKm
+        val policyUnsaved = logical.persisted.minimumReserveKm != durable.minimumReserveKm ||
+            logical.persisted.fuelPreference != durable.fuelPreference
         val exposureUnsaved = logical.activeRecommendationKey?.let { it !in durable.exposedRecommendationKeys } == true
         val positiveExposureUnsaved =
             (logical.ui.motion == Motion.Parked && (refuelUnsaved || policyUnsaved)) ||

@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import dev.fuelpilot.data.poi.gateway.StationFuel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -29,6 +30,12 @@ class PreferencesAssistStateStore(
     override fun observeMinimumReserveKm(): Flow<Int> = dataStore.data
         .map { (it[RESERVE] ?: 50).takeIf(::validReserveKm) ?: 50 }.distinctUntilChanged()
 
+    override fun observeFuelPreference(): Flow<StationFuel?> = dataStore.data
+        .map { fuelFrom(it[FUEL]) }.distinctUntilChanged()
+
+    private fun fuelFrom(code: String?): StationFuel? =
+        selectableFuels.firstOrNull { it.providerCode == code }
+
     private fun decode(preferences: Preferences) = AssistStoredState(
         processedRefuels = preferences[REFUELS].orEmpty().mapNotNull { entry ->
             // Only the first ':' is a separator; event IDs may contain arbitrary text.
@@ -46,6 +53,7 @@ class PreferencesAssistStateStore(
         minimumReserveKm = (preferences[RESERVE] ?: 50).takeIf(::validReserveKm) ?: 50,
         refuelHistory = preferences[HISTORY].orEmpty().mapNotNull(RefuelRecordCodec::decode)
             .sortedWith(compareByDescending<RefuelRecord>{it.observedAtMs}.thenBy{it.id}),
+        fuelPreference = fuelFrom(preferences[FUEL]),
     )
 
     private fun encode(state: AssistStoredState, current: Preferences): Preferences =
@@ -61,6 +69,7 @@ class PreferencesAssistStateStore(
             if (state.destinationId == null) remove(DESTINATION) else this[DESTINATION] = state.destinationId
             if (state.lastRecommendationKey == null) remove(LAST_RECOMMENDATION)
             else this[LAST_RECOMMENDATION] = state.lastRecommendationKey
+            if (state.fuelPreference == null) remove(FUEL) else this[FUEL] = state.fuelPreference.providerCode
         }
 
     private companion object {
@@ -73,5 +82,6 @@ class PreferencesAssistStateStore(
         val EXPOSED = stringSetPreferencesKey("assist.exposed_recommendations")
         val RESERVE = intPreferencesKey("assist.minimum_reserve_km")
         val HISTORY = stringSetPreferencesKey("assist.refuel_history_v1")
+        val FUEL = stringPreferencesKey("assist.fuel_preference")
     }
 }

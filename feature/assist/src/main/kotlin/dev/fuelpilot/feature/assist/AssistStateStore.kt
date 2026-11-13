@@ -1,9 +1,13 @@
 package dev.fuelpilot.feature.assist
 
+import dev.fuelpilot.data.poi.gateway.StationFuel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
 fun validReserveKm(value: Int) = value in 20..100 && value % 10 == 0
+
+/** Fuels a driver can choose when the vehicle does not report one. Heating kerosene is not a vehicle fuel. */
+val selectableFuels = listOf(StationFuel.GASOLINE, StationFuel.PREMIUM_GASOLINE, StationFuel.DIESEL, StationFuel.LPG)
 
 /** Durable values only: animations and monotonic clock values never cross this boundary. */
 data class AssistStoredState(
@@ -16,6 +20,8 @@ data class AssistStoredState(
     val exposedRecommendationKeys: Set<String> = emptySet(),
     val minimumReserveKm: Int = 50,
     val refuelHistory: List<RefuelRecord> = emptyList(),
+    /** The driver's choice, used only when the vehicle itself reports no fuel type. */
+    val fuelPreference: StationFuel? = null,
 ) {
     fun pruned(nowMs: Long): AssistStoredState = copy(
         processedRefuels = processedRefuels.entries
@@ -26,6 +32,7 @@ data class AssistStoredState(
         exposedRecommendationKeys = exposedRecommendationKeys + listOfNotNull(lastRecommendationKey),
         minimumReserveKm = minimumReserveKm.takeIf(::validReserveKm) ?: 50,
         refuelHistory = retainedRefuelHistory(refuelHistory, nowMs),
+        fuelPreference = fuelPreference?.takeIf { it in selectableFuels },
     )
 }
 
@@ -36,4 +43,5 @@ interface AssistStateStore {
     suspend fun read(): AssistStoredState
     suspend fun write(state: AssistStoredState)
     fun observeMinimumReserveKm(): Flow<Int> = flow { emit(read().minimumReserveKm) }
+    fun observeFuelPreference(): Flow<StationFuel?> = flow { emit(read().fuelPreference) }
 }

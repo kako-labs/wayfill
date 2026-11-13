@@ -24,6 +24,8 @@ enum class AssistSignal(val label: String) {
     LOCATION("현재 위치"),
     ROUTE("내비 경로"),
     STATIONS("주유소"),
+    /** Neither the vehicle nor the driver has said which fuel to look for. */
+    FUEL_TYPE("연료 종류"),
 }
 
 data class AssistPresentation(
@@ -42,6 +44,7 @@ fun Set<AssistSignal>.labels(): String = sortedBy { it.ordinal }.joinToString("�
 
 fun AssistPresentation.statusMessage(): String? {
     if (availability == AssistAvailability.READY) return null
+    if (AssistSignal.FUEL_TYPE in blockedBy) return "차량이 연료 종류를 알려주지 않아요. 설정에서 연료를 고르면 안내할게요."
     if (blockedBy.onlyStationsMissing()) return when (availability) {
         AssistAvailability.STALE -> "주유소 정보를 새로 확인하고 있어요."
         else -> "차량과 경로는 확인했어요. 주유소 정보가 연결되면 안내할게요."

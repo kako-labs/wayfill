@@ -27,6 +27,17 @@ class PreferencesAssistStateStoreTest {
         assertEquals(80, store.observeMinimumReserveKm().first())
     }
 
+    @Test fun fuelPreferenceRoundTripsAndOnlySelectableFuelsSurvive() = runTest {
+        val store = store("fuel")
+        assertNull(store.read().fuelPreference)
+        assertNull(store.observeFuelPreference().first())
+        store.write(store.read().copy(fuelPreference = dev.fuelpilot.data.poi.gateway.StationFuel.DIESEL))
+        assertEquals(dev.fuelpilot.data.poi.gateway.StationFuel.DIESEL, store.read().fuelPreference)
+        assertEquals(dev.fuelpilot.data.poi.gateway.StationFuel.DIESEL, store.observeFuelPreference().first())
+        store.write(store.read().copy(fuelPreference = dev.fuelpilot.data.poi.gateway.StationFuel.KEROSENE))
+        assertNull(store.read().fuelPreference)
+    }
+
     private val fileSystem = FakeFileSystem()
     private val now = 100L * 24 * 60 * 60 * 1000
 

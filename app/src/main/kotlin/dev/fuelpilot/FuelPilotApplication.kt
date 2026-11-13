@@ -27,6 +27,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -70,21 +71,27 @@ class FuelPilotApplication : Application() {
         // Public origin only. Missing or invalid configuration never falls back to fixtures.
         val config = BuildConfig.STATION_GATEWAY_ORIGIN.takeIf { it.isNotBlank() }
             ?.let { runCatching { GatewayConfig(it) }.getOrNull() }
-        // The vehicle's own INFO_FUEL_TYPE selects the provider product; no gasoline default is assumed.
+        val store = PreferencesAssistStateStore(assistDataStore)
+        // The vehicle's own INFO_FUEL_TYPE selects the provider product, else the driver's choice in settings;
+        // no gasoline default is assumed.
         val fuelProvider = vehicleSource?.let(::VehicleStationFuelProvider)
+        val stationFuel = StationFuelResolver(fuelProvider?.let { provider -> suspend { provider.read() } }) {
+            store.observeFuelPreference().first()
+        }
         val stations = createProductionStations(location, navigation, GridCachingStationDiscovery(GatewayStationDiscovery(config)),
             roadMetrics = naviPort?.let(::NavigationTripRoadMetrics) ?: UnsupportedStationRoadMetrics,
             coordinateTransform = ValidatedKatecTransform,
-            fuelSource = fuelProvider?.let { provider -> suspend { provider.read() } },
+            fuelSource = stationFuel::read,
             // With an active route the gateway's routed corridor supplies stations and road metrics.
             routeCorridor = GatewayRouteCorridor(config))
-        AppDependencies(PreferencesAssistStateStore(assistDataStore),
+        AppDependencies(store,
             energy = energy, location = location, navigation = navigation, stations = stations,
             // Refuel detection stays off until the tank-level rule is validated on a real combustion vehicle.
             vehicleEvents = vehicleSource?.let { AaosVehicleEvents(it, fuelLevel = it, refuelDetectionEnabled = false) }
                 ?: UnsupportedVehicleEvents,
             recommendationSpeech = if (automotive) PleosTtsSpeechPort(this) else UnsupportedRecommendationSpeechPort,
-            reduceMotion = observeReducedMotion())
+            reduceMotion = observeReducedMotion(),
+            stationFuel = stationFuel::read)
     }
 
     private fun observeReducedMotion() = callbackFlow {

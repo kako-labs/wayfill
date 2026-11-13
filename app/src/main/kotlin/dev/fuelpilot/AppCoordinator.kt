@@ -77,10 +77,13 @@ class AppCoordinator(private val dependencies: AppDependencies) {
             SignalStatus.STALE in signals -> AssistAvailability.STALE
             else -> null
         }
+        // Stations missing because no fuel is known is a settings task for the driver, not a source outage.
+        val fuelUnknown = stations !is StationResult.Available && stationsQueried &&
+            dependencies.stationFuel?.let { readOr(null) { it() } == null } == true
         val blockedBy = listOf(AssistSignal.VEHICLE_ENERGY, AssistSignal.LOCATION, AssistSignal.ROUTE, AssistSignal.STATIONS)
             .zip(signals)
             .filter { (signal, status) -> status != SignalStatus.FRESH && (signal != AssistSignal.STATIONS || stationsQueried) }
-            .map { it.first }
+            .map { if (it.first == AssistSignal.STATIONS && fuelUnknown) AssistSignal.FUEL_TYPE else it.first }
             .toSet()
         var navigationTargets = emptyMap<String, NavigationTarget>()
         val presentation = if (unavailable != null) unavailable(unavailable).copy(blockedBy = blockedBy) else {

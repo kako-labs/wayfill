@@ -62,6 +62,23 @@ class AssistViewModelTest {
         assertEquals(70, vm.state.value.persisted.minimumReserveKm)
     }
 
+    @Test fun fuelChoiceIsParkedOnlyAndInvalidatesTheOldRecommendation() = runTest {
+        val vm = model(); runCurrent()
+        vm.dispatch(AssistIntent.FuelChanged(dev.fuelpilot.data.poi.gateway.StationFuel.DIESEL)); runCurrent()
+        assertNull(vm.state.value.persisted.fuelPreference)
+        readyRecommendation(vm)
+        vm.dispatch(AssistIntent.SelectStation("station")); runCurrent()
+        vm.dispatch(AssistIntent.FuelChanged(dev.fuelpilot.data.poi.gateway.StationFuel.KEROSENE)); runCurrent()
+        assertNull(vm.state.value.persisted.fuelPreference)
+        vm.dispatch(AssistIntent.FuelChanged(dev.fuelpilot.data.poi.gateway.StationFuel.DIESEL)); runCurrent()
+        assertEquals(dev.fuelpilot.data.poi.gateway.StationFuel.DIESEL, vm.state.value.persisted.fuelPreference)
+        assertNull(vm.state.value.pending)
+        assertNull(vm.state.value.presentation.route.recommended)
+        vm.dispatch(AssistIntent.MotionChanged(Motion.Moving))
+        vm.dispatch(AssistIntent.FuelChanged(dev.fuelpilot.data.poi.gateway.StationFuel.LPG)); runCurrent()
+        assertEquals(dev.fuelpilot.data.poi.gateway.StationFuel.DIESEL, vm.state.value.persisted.fuelPreference)
+    }
+
     @Test fun changedReserveInvalidatesOldRecommendationAndPendingRequest() = runTest {
         val vm = model(); readyRecommendation(vm)
         vm.dispatch(AssistIntent.SelectStation("station")); runCurrent()

@@ -4,6 +4,7 @@ import dev.fuelpilot.data.navigation.NavigationMode
 import dev.fuelpilot.data.navigation.NavigationTarget
 import dev.fuelpilot.data.navigation.WaypointRequest
 import dev.fuelpilot.data.navigation.WaypointResult
+import dev.fuelpilot.data.poi.gateway.StationFuel
 import dev.fuelpilot.ui.FuelRouteUi
 import dev.fuelpilot.ui.FuelUiEvent
 import dev.fuelpilot.ui.FuelUiState
@@ -32,6 +33,8 @@ sealed interface AssistIntent {
     data class CelebrationFinished(val id: String) : AssistIntent
     data class CharacterChanged(val enabled: Boolean) : AssistIntent
     data class ReserveChanged(val km: Int) : AssistIntent
+    /** Parked only, like the reserve: it changes which stations can be recommended. */
+    data class FuelChanged(val fuel: StationFuel) : AssistIntent
     data object PauseMonitoring : AssistIntent
     data class ReduceMotionChanged(val enabled: Boolean) : AssistIntent
     data object Continue : AssistIntent
@@ -188,6 +191,13 @@ fun reduceAssist(
         is AssistIntent.ReserveChanged -> if (state.ui.motion == Motion.Parked && validReserveKm(intent.km) && intent.km != state.persisted.minimumReserveKm) {
             next = state.clearTransient().copy(
                 persisted = state.persisted.clearExposure().copy(minimumReserveKm = intent.km),
+                presentation = unavailablePresentation(), requestedScreen = state.requestedScreen,
+            )
+        }
+        is AssistIntent.FuelChanged -> if (state.ui.motion == Motion.Parked && intent.fuel in selectableFuels &&
+            intent.fuel != state.persisted.fuelPreference) {
+            next = state.clearTransient().copy(
+                persisted = state.persisted.clearExposure().copy(fuelPreference = intent.fuel),
                 presentation = unavailablePresentation(), requestedScreen = state.requestedScreen,
             )
         }

@@ -55,6 +55,22 @@ class AppDependenciesTest {
         assertEquals(AssistAvailability.READY,result.availability)
     }
 
+    @Test fun unknownFuelIsReportedAsASettingsTaskNotAStationOutage() = runTest {
+        val base = fixture()
+        val noStations = object : ContextualStationRepository {
+            override suspend fun findStations(): StationResult = StationResult.Unavailable
+            override suspend fun findStationsFor(origin: VehicleLocation, route: ActiveRoute?) = StationResult.Unavailable
+        }
+        fun deps(fuel: dev.fuelpilot.data.poi.gateway.StationFuel?) = AppDependencies(base.store, base.energy, base.location,
+            noStations, base.navigation, base.vehicleEvents, stationFuel = { fuel })
+        val unknown = deps(null).coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertEquals(setOf(AssistSignal.FUEL_TYPE), unknown.blockedBy)
+        assertEquals("차량이 연료 종류를 알려주지 않아요. 설정에서 연료를 고르면 안내할게요.", unknown.statusMessage())
+        val known = deps(dev.fuelpilot.data.poi.gateway.StationFuel.GASOLINE).coordinator().readIntents()
+            .filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertEquals(setOf(AssistSignal.STATIONS), known.blockedBy)
+    }
+
     @Test fun changedRouteOrUnknownWaypointCapacityNeverCallsNavigator() = runTest {
         for (capabilities in listOf(
             NavigationCapabilities(true, true, 2, 0, "different-route"),

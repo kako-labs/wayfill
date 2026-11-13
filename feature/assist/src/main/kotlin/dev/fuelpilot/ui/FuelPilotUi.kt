@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
 import dev.fuelpilot.data.navigation.WaypointResult
+import dev.fuelpilot.data.poi.gateway.StationFuel
+import dev.fuelpilot.feature.assist.selectableFuels
 import dev.fuelpilot.feature.assist.AssistAvailability
 import dev.fuelpilot.feature.assist.AssistIntent
 import dev.fuelpilot.feature.assist.AssistSignal
@@ -185,7 +187,7 @@ private fun FuelPilotContent(
             if (screen == Screen.Analysis) {
                 Analysis(state, route, maxWidth < 840.dp, model.actionableStationId, select, onEvent)
             } else if (screen == Screen.Settings) {
-                Settings(state, onEvent, viewState.persisted.minimumReserveKm, true)
+                Settings(state, onEvent, viewState.persisted.minimumReserveKm, true, viewState.persisted.fuelPreference)
             } else {
                 val wideParked = maxWidth >= 900.dp
                 Column(
@@ -537,9 +539,40 @@ private fun FuelPilotContent(
     }
     HorizontalDivider(color = Line)
 }
-@Composable private fun Settings(state: FuelUiState, onEvent: (AssistIntent) -> Unit, reserve: Int, editable: Boolean) {
+private fun StationFuel.label() = when (this) {
+    StationFuel.GASOLINE -> "휘발유"
+    StationFuel.PREMIUM_GASOLINE -> "고급휘발유"
+    StationFuel.DIESEL -> "경유"
+    StationFuel.LPG -> "LPG"
+    StationFuel.KEROSENE -> "등유"
+}
+
+@Composable private fun Settings(state: FuelUiState, onEvent: (AssistIntent) -> Unit, reserve: Int, editable: Boolean, fuel: StationFuel?) {
     BoxWithConstraints(Modifier.fillMaxSize().testTag("settings_screen")) {
         val wide=maxWidth>=1000.dp
+        val fuelCard:@Composable ()->Unit={
+            SettingsCard {
+                Copy("연료 종류",28)
+                Text("차량이 연료 종류를 알려주면 그 정보를 먼저 써요. 알려주지 않을 때 여기서 고른 연료로 주유소를 찾아요.",
+                    color=Muted,fontSize=20.sp,lineHeight=29.sp)
+                selectableFuels.chunked(2).forEach { pair ->
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(14.dp)) {
+                        pair.forEach { option ->
+                            val selected = option == fuel
+                            Button(onClick={onEvent(AssistIntent.FuelChanged(option))},enabled=editable,
+                                modifier=Modifier.weight(1f).heightIn(min=76.dp).testTag("fuel_option_${option.providerCode}"),
+                                shape=RoundedCornerShape(99.dp),
+                                colors=if(selected) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(containerColor=Inset,contentColor=White),
+                                border=if(selected) null else BorderStroke(1.dp,Line)) {
+                                Text(if(selected) "✓ ${option.label()}" else option.label(),fontSize=22.sp)
+                            }
+                        }
+                    }
+                }
+                Text(fuel?.let { "선택: ${it.label()}" } ?: "아직 고르지 않았어요.",color=GoldText,fontSize=18.sp)
+                if(!editable) Text("차량의 정차 상태를 확인한 뒤 변경할 수 있어요.",color=Coral,fontSize=18.sp)
+            }
+        }
         val reserveCard:@Composable ()->Unit={
             SettingsCard(featured=true) {
                 Copy("주유 판단 여유거리",28)
@@ -582,8 +615,8 @@ private fun FuelPilotContent(
             }
             if(wide) Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(24.dp),verticalAlignment=Alignment.Top) {
                 Box(Modifier.weight(1f)){reserveCard()}
-                Box(Modifier.weight(1f)){motionCard()}
-            } else {reserveCard();motionCard()}
+                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(24.dp)){fuelCard();motionCard()}
+            } else {reserveCard();fuelCard();motionCard()}
             Text("캐릭터 모션은 무음이에요. 시스템 알림 소리는 차량의 알림 설정을 따라요.",color=Muted,fontSize=17.sp,lineHeight=26.sp)
         }
     }
@@ -605,7 +638,8 @@ private fun FuelPilotContent(
     CompositionLocalProvider(LocalPodongStill provides (!state.ui.characterEnabled || state.ui.reduceMotion)) {
         Box(modifier.fillMaxSize()) {
             SunsetBackdrop(Modifier.matchParentSize(),dimmed=true)
-            Settings(state.ui, { if (it == AssistIntent.Continue) onBack() else onIntent(it) }, state.persisted.minimumReserveKm, state.ready && state.ui.motion == Motion.Parked)
+            Settings(state.ui, { if (it == AssistIntent.Continue) onBack() else onIntent(it) }, state.persisted.minimumReserveKm,
+                state.ready && state.ui.motion == Motion.Parked, state.persisted.fuelPreference)
         }
     }
     }

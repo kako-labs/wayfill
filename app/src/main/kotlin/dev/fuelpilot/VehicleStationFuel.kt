@@ -29,3 +29,14 @@ class VehicleStationFuelProvider(private val source: VehicleFuelTypeSource) {
         return stationFuelFor(read.value)?.also { cached = it }
     }
 }
+
+/**
+ * The fuel to search for: the vehicle's own INFO_FUEL_TYPE first; only when it reports no liquid fuel (an
+ * electric or unsupported vehicle) the driver's choice from settings. Null means neither is known.
+ */
+class StationFuelResolver(
+    private val vehicle: (suspend () -> StationFuel?)?,
+    private val preference: suspend () -> StationFuel?,
+) {
+    suspend fun read(): StationFuel? = vehicle?.invoke() ?: preference()
+}
