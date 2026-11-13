@@ -147,9 +147,7 @@ class GatewayStationDiscovery(
             require(response.status == 200 && doc.status == "available")
             val fetched = requireNotNull(doc.fetchedAtEpochSeconds)
             val expires = requireNotNull(doc.expiresAtEpochSeconds)
-            val now = epochSeconds()
-            if (now >= expires) return unavailable(DiscoveryFailure.STALE)
-            require(fetched >= 0 && fetched <= now && expires > fetched && expires - fetched <= 300)
+            val window = localWindow(fetched, expires, epochSeconds(), 300) ?: return unavailable(DiscoveryFailure.STALE)
             val provenance = requireNotNull(doc.provenance)
             require(provenance.provider == "OPINET" && provenance.endpoint == "aroundAll" &&
                 provenance.coordinateSystem == CoordinateSystem.KATEC && !provenance.roadMetricsVerified)
@@ -161,7 +159,8 @@ class GatewayStationDiscovery(
                 require(row.providerDistanceMeters.isFinite() && row.providerDistanceMeters in 0.0..100000.0)
                 require(row.priceObservedAtEpochSeconds == null)
             }
-            return StationDiscoveryResult.Available(RawStationCatalog(doc.stations.toList(), fetched, expires, provenance))
+            return StationDiscoveryResult.Available(RawStationCatalog(doc.stations.toList(),
+                window.fetchedAtEpochSeconds, window.expiresAtEpochSeconds, provenance))
         } catch (_: TimeoutCancellationException) {
             return unavailable(DiscoveryFailure.NETWORK)
         } catch (cancelled: CancellationException) {

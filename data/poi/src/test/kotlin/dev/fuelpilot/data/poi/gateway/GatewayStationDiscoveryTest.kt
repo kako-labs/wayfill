@@ -39,7 +39,7 @@ class GatewayStationDiscoveryTest {
 
     @Test fun staleFutureAndUnverifiedRoadClaimsFailClosed() = runBlocking {
         val valid = document()
-        val documents = listOf(valid.copy(expiresAtEpochSeconds = 1000), valid.copy(fetchedAtEpochSeconds = 1002),
+        val documents = listOf(valid.copy(expiresAtEpochSeconds = 1000), valid.copy(fetchedAtEpochSeconds = 1007, expiresAtEpochSeconds = 1100),
             valid.copy(provenance = valid.provenance!!.copy(roadMetricsVerified = true)),
             valid.copy(stations = valid.stations.map { it.copy(coordinates = it.coordinates.copy(x = Double.NaN)) }),
             valid.copy(stations = valid.stations.map { it.copy(fuel = StationFuel.DIESEL) }))
@@ -48,6 +48,20 @@ class GatewayStationDiscoveryTest {
                 GatewayTransport { _, _ -> GatewayHttpResponse(200, "{}") }, GatewayDecoder { doc }, { 1001 })
             assertTrue(repository.discover(query) is StationDiscoveryResult.Unavailable)
         }
+    }
+
+    @Test fun serverClockSkewIsRestampedWithoutExtendingTheLifetime() = runBlocking {
+        suspend fun read(doc: GatewayDocument, now: Long) = GatewayStationDiscovery(GatewayConfig("https://example.com"),
+            GatewayTransport { _, _ -> GatewayHttpResponse(200, "{}") }, GatewayDecoder { doc }, { now }).discover(query)
+        // The vehicle clock is one second behind the gateway: accepted, restamped to the device clock.
+        val ahead = read(document(now = 1001), now = 1000) as StationDiscoveryResult.Available
+        assertEquals(1000L, ahead.catalog.fetchedAtEpochSeconds)
+        assertEquals(1300L, ahead.catalog.expiresAtEpochSeconds)
+        // Already 100 s old on arrival: only the rest of its lifetime remains.
+        val aged = read(document(now = 1000), now = 1100) as StationDiscoveryResult.Available
+        assertEquals(1100L, aged.catalog.fetchedAtEpochSeconds)
+        assertEquals(1300L, aged.catalog.expiresAtEpochSeconds)
+        assertEquals(StationDiscoveryResult.Unavailable(DiscoveryFailure.STALE), read(document(now = 1000), now = 1300))
     }
 
     @Test fun errorsAndOversizedResponsesCannotLeakProviderMessage() = runBlocking {
