@@ -124,22 +124,28 @@ class OpinetProvider:
 
 class SqliteQuota:
     """Persistent global quota shared across restarts/processes; attempts count too."""
-    def __init__(self, path, daily_limit=300):
-        if type(daily_limit) is not int or not 1 <= daily_limit <= 300:
-            raise ValueError('daily_limit must be 1..300')
+    def __init__(self, path, daily_limit=300, ceiling=300):
+        if type(daily_limit) is not int or not 1 <= daily_limit <= ceiling:
+            raise ValueError(f'daily_limit must be 1..{ceiling}')
         self.path, self.limit = str(path), daily_limit
         with closing(sqlite3.connect(self.path)) as db, db:
             db.execute('CREATE TABLE IF NOT EXISTS quota (id INTEGER PRIMARY KEY CHECK(id=1), day TEXT NOT NULL, calls INTEGER NOT NULL)')
 
-    def consume(self, now):
+    def consume(self, now, units=1, keep=0):
+        """Atomically reserve `units` calls, leaving at least `keep` of today's limit unreserved.
+        All or nothing: a reservation that does not fit consumes nothing."""
+        if type(units) is not int or units < 1 or type(keep) is not int or keep < 0:
+            raise ValueError('units/keep')
         day = datetime.fromtimestamp(now, timezone(timedelta(hours=9))).date().isoformat()
         with closing(sqlite3.connect(self.path, timeout=2)) as db, db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT day,calls FROM quota WHERE id=1').fetchone()
-            if row and (day < row[0] or (day == row[0] and row[1] >= self.limit)):
+            if row and day < row[0]:
                 return False
-            count = row[1] + 1 if row and row[0] == day else 1
-            db.execute('INSERT OR REPLACE INTO quota VALUES (1,?,?)', (day, count))
+            used = row[1] if row and row[0] == day else 0
+            if used + units > self.limit - keep:
+                return False
+            db.execute('INSERT OR REPLACE INTO quota VALUES (1,?,?)', (day, used + units))
             return True
 
 
@@ -240,7 +246,10 @@ def main():
     provider = OpinetProvider(os.environ.get('OPINET_API_KEY', ''))
     routing = KakaoDirections(os.environ.get('KAKAO_REST_API_KEY', ''))
     quota = SqliteQuota(Path(os.environ.get('WAYFILL_QUOTA_DB', 'opinet-quota.sqlite')))
-    handler = handler_for(Gateway(provider, quota), RouteCorridor(routing, provider, quota))
+    # Kakao requests are metered too: one base route plus one per measured station.
+    routing_quota = SqliteQuota(Path(os.environ.get('WAYFILL_ROUTING_QUOTA_DB', 'routing-quota.sqlite')),
+                                daily_limit=int(os.environ.get('WAYFILL_ROUTING_DAILY_LIMIT', '1000')), ceiling=10000)
+    handler = handler_for(Gateway(provider, quota), RouteCorridor(routing, provider, quota, routing_quota))
     # Threaded: a corridor build takes seconds and must not stall /discover.
     ThreadingHTTPServer(('127.0.0.1', 8787), handler).serve_forever()
 

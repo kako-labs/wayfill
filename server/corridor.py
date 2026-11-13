@@ -5,14 +5,17 @@ destination for each candidate (detour). Opinet supplies stations from searches 
 SAMPLE_SPACING_M along the route. Coverage is proven, not assumed: every point of the route lies within
 SEARCH_RADIUS_M - MAX_LATERAL_M of some search centre, so every station within MAX_LATERAL_M of the route
 was inside at least one search.
-A corridor is built once per destination and reused while the vehicle stays on that route; each request
-projects the current origin onto it. Provider straight-line distance is never used as a road metric.
-Both keys stay on the server.
+A corridor is built once per trip and reused, via its private token, while the vehicle stays on that route;
+each request projects the current origin onto it. Provider straight-line distance is never used as a road
+metric. Both keys stay on the server, and both providers are metered by persistent daily quotas reserved
+before any call is made.
 """
 import bisect
 from concurrent.futures import ThreadPoolExecutor
 import json
 import math
+import re
+import secrets
 import threading
 import urllib.parse
 import urllib.request
@@ -40,6 +43,11 @@ OFF_ROUTE_M = 300
 SNAPSHOT_TTL_S = 30
 SAMPLE_CACHE_TTL_S = 300
 MIN_AHEAD_M = 50
+MAX_CORRIDORS = 256
+# Opinet quota a corridor build may never take, so nearby /discover keeps working.
+DISCOVER_RESERVE = 60
+TOKEN_BYTES = 16
+TOKEN_PATTERN = re.compile(r'[A-Za-z0-9_-]{22}')
 EARTH_M = 6371008.8
 
 
@@ -227,20 +235,22 @@ def sample_centres(route):
 
 
 class RouteCorridor:
-    def __init__(self, routing, opinet, quota, clock=None, workers=4):
+    """Corridors are private to one trip: each build returns an unguessable token, and only a request carrying
+    it (same destination and fuel, origin still on the route) reuses that corridor. Another caller cannot
+    reuse or probe someone else's trip. Provider samples (public price data per 1 km cell) are shared."""
+    def __init__(self, routing, opinet, quota, routing_quota, clock=None, workers=4):
         import time
-        self.routing, self.opinet, self.quota = routing, opinet, quota
+        self.routing, self.opinet, self.quota, self.routing_quota = routing, opinet, quota, routing_quota
         self.clock = clock or time.time
         self.workers = workers
         self._corridors, self._samples = {}, {}
         self._lock = threading.Lock()
-        self._key_locks = {}
 
     def measure(self, query):
         def error(code, reason):
             return code, dict(schemaVersion=1, status='unavailable', reason=reason)
         try:
-            origin, destination, fuel = self._validate(query)
+            origin, destination, fuel, token = self._validate(query)
         except (ValueError, TypeError, KeyError):
             return error(400, 'INVALID_QUERY')
         if not self.routing.configured:
@@ -248,35 +258,32 @@ class RouteCorridor:
         if not self.opinet.configured:
             return error(503, 'PROVIDER_UNCONFIGURED')
         now = int(self.clock())
-        key = (round(destination[0], 4), round(destination[1], 4), fuel)
         with self._lock:
             for stale in [k for k, c in self._corridors.items() if now - c['created'] >= CORRIDOR_TTL_S]:
                 del self._corridors[stale]
-            if len(self._key_locks) > 256:
-                # A dropped lock can at worst let one duplicate build run; correctness is unaffected.
-                self._key_locks = {k: v for k, v in self._key_locks.items() if k in self._corridors}
-            key_lock = self._key_locks.setdefault(key, threading.Lock())
+            corridor = self._corridors.get(token) if token else None
         try:
-            with key_lock:
+            if (corridor is None or corridor['destination'] != destination or corridor['fuel'] != fuel or
+                    corridor['route'].project(*origin)[1] > OFF_ROUTE_M):
+                corridor = self._build(origin, destination, fuel, now)
                 with self._lock:
-                    corridor = self._corridors.get(key)
-                if (corridor is None or now - corridor['created'] >= CORRIDOR_TTL_S or
-                        corridor['route'].project(*origin)[1] > OFF_ROUTE_M):
-                    corridor = self._build(origin, destination, fuel, now)
-                    with self._lock:
-                        self._corridors[key] = corridor
-                        while len(self._corridors) > 64:
-                            self._corridors.pop(next(iter(self._corridors)))
+                    self._corridors[corridor['token']] = corridor
+                    while len(self._corridors) > MAX_CORRIDORS:
+                        self._corridors.pop(next(iter(self._corridors)))
         except ProviderFailure as failure:
-            return error(429 if failure.reason == 'QUOTA_EXHAUSTED' else 503, failure.reason)
+            return error(429 if failure.reason.endswith('QUOTA_EXHAUSTED') else 503, failure.reason)
         except Exception:
             return error(503, 'ROUTING_UNAVAILABLE')
         return 200, self._snapshot(corridor, origin, now)
 
     @staticmethod
     def _validate(query):
-        if not isinstance(query, dict) or set(query) != {'origin', 'destination', 'fuel'} or query['fuel'] not in FUELS:
+        if (not isinstance(query, dict) or set(query) - {'corridorToken'} != {'origin', 'destination', 'fuel'} or
+                query['fuel'] not in FUELS):
             raise ValueError('query')
+        token = query.get('corridorToken')
+        if token is not None and (type(token) is not str or not TOKEN_PATTERN.fullmatch(token)):
+            raise ValueError('token')
         points = []
         for name in ('origin', 'destination'):
             point = query[name]
@@ -286,11 +293,18 @@ class RouteCorridor:
             if not katec.in_korea(lat, lon):
                 raise ValueError('outside Korea')
             points.append((lat, lon))
-        return points[0], points[1], query['fuel']
+        return points[0], points[1], query['fuel'], token
 
     def _build(self, origin, destination, fuel, now):
+        if not self.routing_quota.consume(now):
+            raise ProviderFailure('ROUTING_QUOTA_EXHAUSTED')
         base = self.routing.route(origin, destination, geometry=True)
         centres = sample_centres(base)
+        with self._lock:
+            missing = sum(1 for c in centres if self._cached_sample(c, fuel, now) is None)
+        # Reserve the whole provider budget up front (all or nothing), keeping a share for /discover.
+        if missing and not self.quota.consume(now, units=missing, keep=DISCOVER_RESERVE):
+            raise ProviderFailure('QUOTA_EXHAUSTED')
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
             samples = list(pool.map(lambda c: self._sample(c, fuel, now), centres))
         batches = [rows for _, rows in samples]
@@ -318,18 +332,24 @@ class RouteCorridor:
             routed = self.routing.route(origin, destination, waypoint=(station['latitude'], station['longitude']))
             return dict(station, detour_s=max(0.0, routed.duration - base.duration),
                         detour_m=max(0.0, routed.distance - base.distance))
+        if chosen and not self.routing_quota.consume(now, units=len(chosen)):
+            raise ProviderFailure('ROUTING_QUOTA_EXHAUSTED')
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
             measured = list(pool.map(via, chosen))
-        return dict(created=now, observed=min(at for at, _ in samples), route=base, candidates=measured)
+        return dict(token=secrets.token_urlsafe(TOKEN_BYTES), created=now, destination=destination, fuel=fuel,
+                    observed=min(at for at, _ in samples), route=base, candidates=measured)
+
+    def _cached_sample(self, centre, fuel, now):
+        cached = self._samples.get((round(centre[0], 1), round(centre[1], 1), fuel))
+        return cached if cached and 0 <= now - cached[0] < SAMPLE_CACHE_TTL_S else None
 
     def _sample(self, centre, fuel, now):
+        """Quota for uncached samples was reserved by the caller."""
         key = (round(centre[0], 1), round(centre[1], 1), fuel)
         with self._lock:
-            cached = self._samples.get(key)
-            if cached and 0 <= now - cached[0] < SAMPLE_CACHE_TTL_S:
+            cached = self._cached_sample(centre, fuel, now)
+            if cached:
                 return cached
-        if not self.quota.consume(now):
-            raise ProviderFailure('QUOTA_EXHAUSTED')
         rows = self.opinet.discover(dict(coordinateSystem='KATEC', x=centre[0], y=centre[1],
                                          radiusMeters=SEARCH_RADIUS_M, fuel=fuel), allow_empty=True)
         with self._lock:
@@ -358,7 +378,7 @@ class RouteCorridor:
                 detourSeconds=int(round(c['detour_s'])),
             ))
         return dict(
-            schemaVersion=1, status='available',
+            schemaVersion=1, status='available', corridorToken=corridor['token'],
             fetchedAtEpochSeconds=now, expiresAtEpochSeconds=now + SNAPSHOT_TTL_S,
             stationsObservedAtEpochSeconds=corridor['observed'],
             route=dict(remainingDistanceMeters=round(max(0.0, route.distance - progress), 1),

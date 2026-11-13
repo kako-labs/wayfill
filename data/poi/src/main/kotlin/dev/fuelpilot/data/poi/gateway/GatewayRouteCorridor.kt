@@ -72,6 +72,8 @@ data class CorridorDocument(
     val stationProvider: String?,
     val routingProvider: String?,
     val coordinateSystem: String?,
+    /** Private handle for this trip's corridor; only this client can reuse it. */
+    val corridorToken: String? = null,
 )
 
 fun interface CorridorDecoder { fun decode(json: String): CorridorDocument }
@@ -83,7 +85,7 @@ object JsonCorridorDecoder : CorridorDecoder {
         require(tokener.nextClean() == '\u0000')
         require(root.get("schemaVersion") == 1)
         val status = root.getString("status")
-        if (status == "unavailable") return CorridorDocument(1, status, root.getString("reason"), null, null, null, null)
+        if (status == "unavailable") return CorridorDocument(1, status, root.getString("reason"), null, null, null, null, null)
         require(status == "available")
         val route = root.getJSONObject("route")
         val coverage = root.getJSONObject("coverage")
@@ -101,7 +103,7 @@ object JsonCorridorDecoder : CorridorDecoder {
             root.strictLong("stationsObservedAtEpochSeconds"), route.strictDouble("remainingDistanceMeters"),
             route.strictInt("remainingDurationSeconds"), coverage.get("verified") as Boolean, stations)
         return CorridorDocument(1, status, null, snapshot, provenance.getString("stationProvider"),
-            provenance.getString("routingProvider"), provenance.getString("coordinateSystem"))
+            provenance.getString("routingProvider"), provenance.getString("coordinateSystem"), root.getString("corridorToken"))
     }
     private fun JSONObject.strictDouble(name: String): Double = (get(name) as Number).toDouble().also { require(it.isFinite()) }
     private fun JSONObject.strictLong(name: String): Long {
@@ -122,14 +124,21 @@ class GatewayRouteCorridor(
     private val decoder: CorridorDecoder = JsonCorridorDecoder,
     private val epochSeconds: () -> Long = { System.currentTimeMillis() / 1000 },
 ) : RouteCorridorSource {
+    private data class Trip(val destinationLatitude: Double, val destinationLongitude: Double, val fuel: StationFuel)
+
+    /** The server reuses a corridor only for the token it issued for that trip. */
+    @Volatile private var lastTrip: Pair<Trip, String>? = null
+
     override suspend fun measure(query: RouteCorridorQuery): RouteCorridorResult {
         fun unavailable(reason: CorridorFailure) = RouteCorridorResult.Unavailable(reason)
         if (!query.isValid()) return unavailable(CorridorFailure.INVALID_QUERY)
         val endpoint = config?.routeEndpoint ?: return unavailable(CorridorFailure.UNCONFIGURED)
-        // Validated finite numbers and an enum code need no caller-controlled JSON string escaping.
+        val trip = Trip(query.destinationLatitude, query.destinationLongitude, query.fuel)
+        val token = lastTrip?.takeIf { it.first == trip }?.second
+        // Validated finite numbers, an enum code and a pattern-checked token need no JSON string escaping.
         val body = """{"origin":{"latitude":${query.originLatitude},"longitude":${query.originLongitude}},""" +
             """"destination":{"latitude":${query.destinationLatitude},"longitude":${query.destinationLongitude}},""" +
-            """"fuel":"${query.fuel.providerCode}"}"""
+            """"fuel":"${query.fuel.providerCode}"""" + (token?.let { ""","corridorToken":"$it"""" } ?: "") + "}"
         try {
             val response = withTimeout(16_000) { runInterruptible(Dispatchers.IO) { transport.post(endpoint, body) } }
             if (response.status == 429) return unavailable(CorridorFailure.QUOTA_EXHAUSTED)
@@ -139,13 +148,15 @@ class GatewayRouteCorridor(
             if (doc.schemaVersion != 1) return unavailable(CorridorFailure.INVALID_RESPONSE)
             if (doc.status == "unavailable") return unavailable(when (doc.reason) {
                 "ROUTING_UNCONFIGURED", "PROVIDER_UNCONFIGURED" -> CorridorFailure.UNCONFIGURED
-                "QUOTA_EXHAUSTED" -> CorridorFailure.QUOTA_EXHAUSTED
+                "QUOTA_EXHAUSTED", "ROUTING_QUOTA_EXHAUSTED" -> CorridorFailure.QUOTA_EXHAUSTED
                 "ROUTE_NOT_FOUND", "ROUTE_TOO_LONG" -> CorridorFailure.ROUTE_UNAVAILABLE
                 else -> CorridorFailure.NETWORK
             })
             require(response.status == 200 && doc.status == "available")
             require(doc.stationProvider == "OPINET" && doc.routingProvider == "KAKAO_MOBILITY" && doc.coordinateSystem == "WGS84")
             val snapshot = requireNotNull(doc.snapshot)
+            val issued = requireNotNull(doc.corridorToken)
+            require(TOKEN_PATTERN.matches(issued))
             val now = epochSeconds()
             if (now >= snapshot.expiresAtEpochSeconds) return unavailable(CorridorFailure.STALE)
             require(snapshot.fetchedAtEpochSeconds in 0..now && snapshot.expiresAtEpochSeconds > snapshot.fetchedAtEpochSeconds &&
@@ -161,6 +172,7 @@ class GatewayRouteCorridor(
                 require(row.alongRouteMeters >= 0 && row.alongRouteMeters <= snapshot.remainingDistanceMeters)
                 require(row.roadDistanceMeters >= row.alongRouteMeters && row.etaSeconds >= 0 && row.detourSeconds >= 0)
             }
+            lastTrip = trip to issued
             return RouteCorridorResult.Available(snapshot.copy(stations = snapshot.stations.toList()))
         } catch (_: TimeoutCancellationException) {
             return unavailable(CorridorFailure.NETWORK)
@@ -179,5 +191,6 @@ class GatewayRouteCorridor(
 }
 
 private const val MAX_STATIONS = 50
+private val TOKEN_PATTERN = Regex("[A-Za-z0-9_-]{22}")
 private val KOREA_LATITUDE = 32.5..39.0
 private val KOREA_LONGITUDE = 124.0..132.0

@@ -9,8 +9,9 @@ class GatewayRouteCorridorTest {
     private val station = CorridorStation("A0001", "Station", StationFuel.GASOLINE, 1884.0, 37.3877, 127.1135,
         382.6, 1123.1, 188, 234)
     private val snapshot = RouteCorridorSnapshot(1000, 1030, 990, 16839.0, 1500, true, listOf(station))
+    private val token = "AbCdEfGhIjKlMnOpQrSt_-"
     private fun document(snapshot: RouteCorridorSnapshot = this.snapshot) =
-        CorridorDocument(1, "available", null, snapshot, "OPINET", "KAKAO_MOBILITY", "WGS84")
+        CorridorDocument(1, "available", null, snapshot, "OPINET", "KAKAO_MOBILITY", "WGS84", token)
     private fun corridor(doc: CorridorDocument, status: Int = 200, now: Long = 1001, onPost: (String, String) -> Unit = { _, _ -> }) =
         GatewayRouteCorridor(GatewayConfig("https://example.com"),
             GatewayTransport { url, body -> onPost(url, body); GatewayHttpResponse(status, "{}") }, CorridorDecoder { doc }, { now })
@@ -47,6 +48,8 @@ class GatewayRouteCorridorTest {
             document(snapshot.copy(stations = listOf(station.copy(roadDistanceMeters = 100.0)))),
             document(snapshot.copy(stations = listOf(station.copy(latitude = 0.0)))),
             document(snapshot.copy(stations = listOf(station.copy(detourSeconds = -1)))),
+            document().copy(corridorToken = null),
+            document().copy(corridorToken = "has\"quote-and-wrong-len"),
         )
         invalid.forEach { doc ->
             assertEquals(doc.toString(), RouteCorridorResult.Unavailable(CorridorFailure.INVALID_RESPONSE), corridor(doc).measure(query))
@@ -67,6 +70,17 @@ class GatewayRouteCorridorTest {
         val oversized = GatewayRouteCorridor(GatewayConfig("https://example.com"),
             GatewayTransport { _, _ -> GatewayHttpResponse(200, "x".repeat(262145)) }, CorridorDecoder { error("must not decode") })
         assertEquals(RouteCorridorResult.Unavailable(CorridorFailure.INVALID_RESPONSE), oversized.measure(query))
+    }
+
+    @Test fun issuedTokenIsSentBackOnlyForTheSameTrip() = runBlocking {
+        val bodies = mutableListOf<String>()
+        val client = corridor(document()) { _, body -> bodies += body }
+        client.measure(query)
+        client.measure(query.copy(originLatitude = 37.40))
+        client.measure(query.copy(fuel = StationFuel.DIESEL))
+        assertFalse(bodies[0].contains("corridorToken"))
+        assertTrue(bodies[1].endsWith(""""fuel":"B027","corridorToken":"$token"}"""))
+        assertFalse(bodies[2].contains("corridorToken"))
     }
 
     @Test fun configDerivesBothEndpointsFromOneOrigin() {

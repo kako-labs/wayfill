@@ -91,14 +91,19 @@ class CorridorTests(unittest.TestCase):
         self.routing = KakaoDirections('KAKAOSECRET', kakao)
         self.opinet = OpinetProvider('OPINETSECRET', opinet)
         self.quota = SqliteQuota(Path(self.tmp.name) / 'quota.sqlite', daily_limit=300)
-        self.corridor = RouteCorridor(self.routing, self.opinet, self.quota, clock=lambda: self.now, workers=2)
+        self.routing_quota = SqliteQuota(Path(self.tmp.name) / 'routing.sqlite', daily_limit=1000, ceiling=10000)
+        self.corridor = RouteCorridor(self.routing, self.opinet, self.quota, self.routing_quota,
+                                      clock=lambda: self.now, workers=2)
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def query(self, origin=ORIGIN, destination=DEST, fuel='B027'):
-        return dict(origin=dict(latitude=origin[0], longitude=origin[1]),
-                    destination=dict(latitude=destination[0], longitude=destination[1]), fuel=fuel)
+    def query(self, origin=ORIGIN, destination=DEST, fuel='B027', token=None):
+        query = dict(origin=dict(latitude=origin[0], longitude=origin[1]),
+                     destination=dict(latitude=destination[0], longitude=destination[1]), fuel=fuel)
+        if token is not None:
+            query['corridorToken'] = token
+        return query
 
     def test_stations_along_route_carry_routed_metrics(self):
         status, result = self.corridor.measure(self.query())
@@ -126,28 +131,66 @@ class CorridorTests(unittest.TestCase):
         self.assertNotIn('SECRET', text)
         self.assertNotIn('providerDistanceMeters', text)
 
-    def test_corridor_is_reused_while_on_route_and_rebuilt_when_off_route(self):
-        self.corridor.measure(self.query())
+    def test_corridor_is_reused_with_its_token_while_on_route_and_rebuilt_when_off_route(self):
+        token = self.corridor.measure(self.query())[1]['corridorToken']
+        self.assertRegex(token, r'^[A-Za-z0-9_-]{22}$')
         kakao, opinet = len(self.kakao_calls), len(self.opinet_calls)
         self.now += 20
-        status, result = self.corridor.measure(self.query(origin=offset(5000, 50)))
+        status, result = self.corridor.measure(self.query(origin=offset(5000, 50), token=token))
         self.assertEqual(200, status)
+        self.assertEqual(token, result['corridorToken'])
         self.assertEqual((kakao, opinet), (len(self.kakao_calls), len(self.opinet_calls)))
         self.assertAlmostEqual(5000, result['stations'][0]['alongRouteMeters'], delta=30)
         self.assertEqual(self.now + 30, result['expiresAtEpochSeconds'])
-        status, result = self.corridor.measure(self.query(origin=offset(13000, 0)))
+        status, result = self.corridor.measure(self.query(origin=offset(13000, 0), token=token))
         self.assertEqual(['S5'], [s['id'] for s in result['stations']])
-        # 900 m east of the route: a new corridor from the new origin; Opinet samples come from cache.
-        status, result = self.corridor.measure(self.query(origin=offset(13000, 900)))
+        # 900 m east of the route: a new corridor (new token) from the new origin; samples come from cache.
+        status, result = self.corridor.measure(self.query(origin=offset(13000, 900), token=token))
         self.assertEqual(200, status)
+        self.assertNotEqual(token, result['corridorToken'])
         self.assertGreater(len(self.kakao_calls), kakao)
 
+    def test_another_caller_cannot_reuse_or_probe_a_trip(self):
+        token = self.corridor.measure(self.query())[1]['corridorToken']
+        kakao = len(self.kakao_calls)
+        # Same destination and an origin on that route, but no token or an unknown one: always a fresh build.
+        for other in (None, 'A' * 22):
+            status, result = self.corridor.measure(self.query(origin=offset(5000, 0), token=other))
+            self.assertEqual(200, status)
+            self.assertNotEqual(token, result['corridorToken'])
+        base_routes = [u for u, _ in self.kakao_calls[kakao:] if 'summary=false' in u]
+        self.assertEqual(2, len(base_routes))
+        # A token only unlocks its own destination and fuel.
+        self.assertNotEqual(token, self.corridor.measure(self.query(fuel='D047', token=token))[1].get('corridorToken'))
+
     def test_corridor_expires(self):
-        self.corridor.measure(self.query())
+        token = self.corridor.measure(self.query())[1]['corridorToken']
         kakao = len(self.kakao_calls)
         self.now += 600
-        self.corridor.measure(self.query())
+        self.corridor.measure(self.query(token=token))
         self.assertGreater(len(self.kakao_calls), kakao)
+
+    def test_provider_budget_is_reserved_all_or_nothing_and_keeps_a_share_for_discover(self):
+        # 300 - 60 kept for /discover leaves 240; burn 238 so a corridor needing more than 2 searches cannot start.
+        self.assertTrue(self.quota.consume(self.now, units=238))
+        status, result = self.corridor.measure(self.query())
+        self.assertEqual((429, 'QUOTA_EXHAUSTED'), (status, result['reason']))
+        self.assertEqual([], self.opinet_calls)
+        self.assertTrue(self.quota.consume(self.now, units=60))  # the /discover share is still there
+
+    def test_routing_calls_are_metered(self):
+        tight = SqliteQuota(Path(self.tmp.name) / 'tight-routing', daily_limit=2, ceiling=10000)
+        corridor = RouteCorridor(self.routing, self.opinet, self.quota, tight, clock=lambda: self.now)
+        # Base route fits; measuring two stations does not: refused before any via-station request.
+        status, result = corridor.measure(self.query())
+        self.assertEqual((429, 'ROUTING_QUOTA_EXHAUSTED'), (status, result['reason']))
+        self.assertEqual(1, len(self.kakao_calls))
+        # The last unit pays for one more base route; after that nothing reaches Kakao at all.
+        corridor.measure(self.query())
+        self.assertEqual(2, len(self.kakao_calls))
+        status, result = corridor.measure(self.query())
+        self.assertEqual((429, 'ROUTING_QUOTA_EXHAUSTED'), (status, result['reason']))
+        self.assertEqual(2, len(self.kakao_calls))
 
     def test_every_sample_empty_fails_closed(self):
         self.empty_everywhere = True
@@ -165,9 +208,9 @@ class CorridorTests(unittest.TestCase):
         self.assertEqual('ROUTE_NOT_FOUND', self.corridor.measure(self.query())[1]['reason'])
 
     def test_unconfigured_keys_fail_without_network(self):
-        corridor = RouteCorridor(KakaoDirections('', lambda *a: self.fail('network')), self.opinet, self.quota)
+        corridor = RouteCorridor(KakaoDirections('', lambda *a: self.fail('network')), self.opinet, self.quota, self.routing_quota)
         self.assertEqual((503, 'ROUTING_UNCONFIGURED'), (corridor.measure(self.query())[0], corridor.measure(self.query())[1]['reason']))
-        corridor = RouteCorridor(self.routing, OpinetProvider(' '), self.quota)
+        corridor = RouteCorridor(self.routing, OpinetProvider(' '), self.quota, self.routing_quota)
         self.assertEqual('PROVIDER_UNCONFIGURED', corridor.measure(self.query())[1]['reason'])
         self.assertEqual([], self.kakao_calls)
 
@@ -177,14 +220,15 @@ class CorridorTests(unittest.TestCase):
                dict(good, origin=dict(latitude=float('nan'), longitude=127.0)),
                dict(good, origin=dict(latitude=True, longitude=127.0)),
                dict(good, origin=dict(latitude=37.4, longitude=127.0, altitude=0)),
-               dict(good, destination=dict(latitude=35.0, longitude=140.0)), [], 'x']
+               dict(good, destination=dict(latitude=35.0, longitude=140.0)), [], 'x',
+               dict(good, corridorToken='short'), dict(good, corridorToken=1), dict(good, corridorToken='A' * 21 + '/')]
         for query in bad:
             self.assertEqual(400, self.corridor.measure(query)[0], query)
         self.assertEqual(([], []), (self.kakao_calls, self.opinet_calls))
 
     def test_quota_exhaustion_is_429(self):
         corridor = RouteCorridor(self.routing, self.opinet, SqliteQuota(Path(self.tmp.name) / 'tiny', daily_limit=2),
-                                 clock=lambda: self.now)
+                                 self.routing_quota, clock=lambda: self.now)
         status, result = corridor.measure(self.query())
         self.assertEqual((429, 'QUOTA_EXHAUSTED'), (status, result['reason']))
 

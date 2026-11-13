@@ -8,7 +8,7 @@ import org.junit.Test
 /** Exercises platform org.json, which is a stub in ordinary Android JVM tests. */
 class JsonCorridorDecoderDeviceTest {
     // Shape copied from a live gateway response (2026-11-13), trimmed to one station.
-    private val available = """{"schemaVersion": 1, "status": "available", "fetchedAtEpochSeconds": 1794575498,
+    private val available = """{"schemaVersion": 1, "status": "available", "corridorToken": "AbCdEfGhIjKlMnOpQrSt_-", "fetchedAtEpochSeconds": 1794575498,
         "expiresAtEpochSeconds": 1794575528, "stationsObservedAtEpochSeconds": 1794575498,
         "route": {"remainingDistanceMeters": 16839.0, "remainingDurationSeconds": 1500},
         "coverage": {"verified": true, "sampleSpacingMeters": 6000, "searchRadiusMeters": 5000},
@@ -21,6 +21,7 @@ class JsonCorridorDecoderDeviceTest {
         val doc = JsonCorridorDecoder.decode(available)
         val snapshot = doc.snapshot!!
         assertEquals("KAKAO_MOBILITY", doc.routingProvider)
+        assertEquals("AbCdEfGhIjKlMnOpQrSt_-", doc.corridorToken)
         assertTrue(snapshot.coverageVerified)
         assertEquals(16839.0, snapshot.remainingDistanceMeters, 0.0)
         val station = snapshot.stations.single()
