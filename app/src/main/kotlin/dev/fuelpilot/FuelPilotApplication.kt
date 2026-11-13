@@ -20,6 +20,7 @@ import dev.fuelpilot.data.navigation.PleosNaviHelperPort
 import dev.fuelpilot.data.navigation.PleosNavigationRepository
 import dev.fuelpilot.data.navigation.UnsupportedNavigationRepository
 import dev.fuelpilot.data.poi.gateway.GatewayConfig
+import dev.fuelpilot.data.poi.gateway.GatewayRouteCorridor
 import dev.fuelpilot.data.poi.gateway.GatewayStationDiscovery
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -74,7 +75,9 @@ class FuelPilotApplication : Application() {
         val stations = createProductionStations(location, navigation, GridCachingStationDiscovery(GatewayStationDiscovery(config)),
             roadMetrics = naviPort?.let(::NavigationTripRoadMetrics) ?: UnsupportedStationRoadMetrics,
             coordinateTransform = ValidatedKatecTransform,
-            fuelSource = fuelProvider?.let { provider -> suspend { provider.read() } })
+            fuelSource = fuelProvider?.let { provider -> suspend { provider.read() } },
+            // With an active route the gateway's routed corridor supplies stations and road metrics.
+            routeCorridor = GatewayRouteCorridor(config))
         AppDependencies(PreferencesAssistStateStore(assistDataStore),
             energy = energy, location = location, navigation = navigation, stations = stations,
             // Refuel detection stays off until the tank-level rule is validated on a real combustion vehicle.

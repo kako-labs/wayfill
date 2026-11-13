@@ -15,8 +15,8 @@ import kotlin.math.ceil
  *
  * Without an active route this is complete: road distance and ETA from the navigation's position.
  * With an active route it returns null, because the navigation cannot compute station-to-destination
- * distance or expose route geometry, so along-route progress, detour and corridor coverage stay
- * unverified until an external routing provider is connected.
+ * distance or expose route geometry; route mode is served by the gateway's routed corridor instead
+ * (see GatewayRouteCorridor and ProductionStationRepository).
  */
 class NavigationTripRoadMetrics(
     private val port: NaviHelperPort,

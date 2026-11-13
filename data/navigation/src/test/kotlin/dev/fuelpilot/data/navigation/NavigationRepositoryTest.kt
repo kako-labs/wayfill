@@ -55,12 +55,13 @@ class NavigationRepositoryTest {
         assertEquals(STATION_ID, result.stationId)
     }
 
-    @Test fun mapsVerifiedRouteMetersToKm() = runBlocking {
+    @Test fun mapsVerifiedRouteMetersToKmWithDestination() = runBlocking {
         val repository = PleosNavigationRepository(port(route = NaviRead.Available(
             NaviRouteSnapshot("Destination", 37.5, 127.0, 12_300.0, "route-token")
         )), { true }, { true })
 
-        assertEquals(RouteResult.Available(ActiveRoute("navi:route-token", "Destination", 12.3)), repository.readRoute())
+        assertEquals(RouteResult.Available(ActiveRoute("navi:route-token", "Destination", 12.3, 37.5, 127.0)),
+            repository.readRoute())
     }
 
     @Test fun navigationMutationRequiresVerifiedTargetAndSdkCallback() = runBlocking {

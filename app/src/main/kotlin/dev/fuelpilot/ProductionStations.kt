@@ -6,6 +6,9 @@ import dev.fuelpilot.data.poi.*
 import dev.fuelpilot.data.poi.gateway.*
 import dev.fuelpilot.model.*
 import kotlinx.coroutines.CancellationException
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.max
 
 /** Implement only after the provider's datum/projection/axes and both directions are verified. */
 fun interface VerifiedStationCoordinateTransform {
@@ -99,8 +102,11 @@ fun createProductionStations(
     fuelSource: (suspend () -> StationFuel?)? = null,
     /** Without a route, only this many nearest catalog rows are road-measured (each costs a trip preview). */
     maxNearbyMeasured: Int = 6,
+    /** With a route, stations and road metrics come from this routed corridor instead of a nearby catalog. */
+    routeCorridor: RouteCorridorSource? = null,
 ): ProductionStationRepository = ProductionStationRepository(
     location, navigation, discovery, roadMetrics, coordinateTransform, fuel, epochSeconds, fuelSource, maxNearbyMeasured,
+    routeCorridor,
 )
 
 /** The sole production join from a raw source catalog into decision-engine candidates. */
@@ -114,6 +120,7 @@ class ProductionStationRepository internal constructor(
     private val epochSeconds: () -> Long,
     private val fuelSource: (suspend () -> StationFuel?)? = null,
     private val maxNearbyMeasured: Int = 6,
+    private val routeCorridor: RouteCorridorSource? = null,
 ) : ContextualStationRepository {
     init { require(maxNearbyMeasured > 0) }
 
@@ -150,6 +157,8 @@ class ProductionStationRepository internal constructor(
                 return fail(ProductionStationFailure.CONTEXT_CHANGED)
             if (route != null && (route.id.isBlank() || !validDistance(route.remainingDistanceKm)))
                 return fail(ProductionStationFailure.ROUTE_UNAVAILABLE)
+            if (route != null && routeCorridor != null)
+                return readCorridor(routeCorridor, verifiedFuel, origin, routeRead)
             val coordinates = coordinateTransform.toKatec(origin)
                 ?: return fail(ProductionStationFailure.COORDINATE_TRANSFORM_UNVERIFIED)
             if (coordinates.system != CoordinateSystem.KATEC || !coordinates.isValid())
@@ -198,6 +207,63 @@ class ProductionStationRepository internal constructor(
         }
     }
 
+    /**
+     * Route mode: the gateway routes origin -> destination, proves the provider searches covered the whole
+     * corridor, and measures each station with a routed via-station detour. Coverage is proven for that routed
+     * path, so it is accepted for the navigation's own route only while both agree on the remaining distance.
+     */
+    private suspend fun readCorridor(
+        corridor: RouteCorridorSource,
+        fuel: StationFuel,
+        origin: VehicleLocation,
+        routeRead: RouteResult.Available,
+    ): ProductionStationRead {
+        fun fail(reason: ProductionStationFailure, discoveryReason: DiscoveryFailure? = null) =
+            ProductionStationRead.Unavailable(reason, discoveryReason)
+        val route = requireNotNull(routeRead.route)
+        val latitude = route.destinationLatitude ?: return fail(ProductionStationFailure.ROAD_METRICS_UNAVAILABLE)
+        val longitude = route.destinationLongitude ?: return fail(ProductionStationFailure.ROAD_METRICS_UNAVAILABLE)
+        val query = RouteCorridorQuery(origin.latitude, origin.longitude, latitude, longitude, fuel)
+        val snapshot = when (val read = corridor.measure(query)) {
+            is RouteCorridorResult.Available -> read.snapshot
+            is RouteCorridorResult.Unavailable -> return when (read.reason) {
+                CorridorFailure.QUOTA_EXHAUSTED ->
+                    fail(ProductionStationFailure.DISCOVERY_UNAVAILABLE, DiscoveryFailure.QUOTA_EXHAUSTED)
+                CorridorFailure.STALE -> fail(ProductionStationFailure.STALE_ROAD_METRICS)
+                CorridorFailure.INVALID_RESPONSE -> fail(ProductionStationFailure.INVALID_ROAD_METRICS)
+                else -> fail(ProductionStationFailure.ROAD_METRICS_UNAVAILABLE)
+            }
+        }
+        if (!snapshot.coverageVerified) return fail(ProductionStationFailure.ROUTE_COVERAGE_UNVERIFIED)
+        val navigationMeters = route.remainingDistanceKm * 1000.0
+        if (abs(snapshot.remainingDistanceMeters - navigationMeters) >
+            max(ROUTE_AGREEMENT_MIN_METERS, navigationMeters * ROUTE_AGREEMENT_RATIO))
+            return fail(ProductionStationFailure.ROUTE_COVERAGE_UNVERIFIED)
+        if (!fresh(snapshot.fetchedAtEpochSeconds, snapshot.expiresAtEpochSeconds, 30))
+            return fail(ProductionStationFailure.STALE_ROAD_METRICS)
+        val rows = snapshot.stations.toList()
+        if (rows.map { it.id }.distinct().size != rows.size || rows.any { row ->
+                row.fuel != fuel || row.id.isBlank() || row.name.isBlank() || !validDistance(row.alongRouteMeters) ||
+                    !validDistance(row.roadDistanceMeters) || row.roadDistanceMeters < row.alongRouteMeters ||
+                    row.etaSeconds < 0 || row.detourSeconds < 0 ||
+                    !validLocation(VehicleLocation(row.latitude, row.longitude)) })
+            return fail(ProductionStationFailure.INVALID_ROAD_METRICS)
+        // Suspended network/routing work cannot publish a result for an old route or origin.
+        if (location.readLocation() != LocationResult.Available(origin) || navigation.readRoute() != routeRead)
+            return fail(ProductionStationFailure.CONTEXT_CHANGED)
+        if (!fresh(snapshot.fetchedAtEpochSeconds, snapshot.expiresAtEpochSeconds, 30))
+            return fail(ProductionStationFailure.STALE_ROAD_METRICS)
+        // The two routings end at the same destination but may differ slightly in length; a station the
+        // navigation's route would already have finished before is not on that route's remaining part.
+        return ProductionStationRead.Available(rows.filter { it.alongRouteMeters <= navigationMeters }.map { row ->
+            FuelStationCandidate(row.id, row.name, row.roadDistanceMeters / 1000.0, row.alongRouteMeters / 1000.0,
+                ceil(row.etaSeconds / 60.0).toInt(), ceil(row.detourSeconds / 60.0).toInt(), OpenStatus.UNKNOWN,
+                fuelCompatible = true, businessInfoFresh = false,
+                navigationTarget = VerifiedStationNavigationTarget(row.id, row.latitude, row.longitude,
+                    NavigationTargetProvenance.VERIFIED_ROAD_METRICS_WGS84))
+        })
+    }
+
     private fun fresh(fetched: Long, expires: Long, maxAge: Long): Boolean {
         val now = epochSeconds()
         return fetched >= 0 && fetched <= now && expires > now && expires > fetched && expires - fetched <= maxAge
@@ -223,6 +289,11 @@ class ProductionStationRepository internal constructor(
                 metric.detourMinutes != null
 
     private fun validDistance(value: Double) = value.isFinite() && value >= 0
+
+    private companion object {
+        const val ROUTE_AGREEMENT_MIN_METERS = 2000.0
+        const val ROUTE_AGREEMENT_RATIO = 0.15
+    }
     private fun validLocation(value: VehicleLocation) = value.latitude.isFinite() && value.latitude in -90.0..90.0 &&
         value.longitude.isFinite() && value.longitude in -180.0..180.0 &&
         (value.accuracyMeters?.let { it.isFinite() && it >= 0 } ?: true)

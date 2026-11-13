@@ -254,7 +254,8 @@ class PleosNavigationRepository(
             snapshot.remainingDistanceMeters < 0.0 || snapshot.routeToken.isBlank()
         ) return RouteResult.Unavailable
         return RouteResult.Available(
-            ActiveRoute(routeId(snapshot), snapshot.destinationName, snapshot.remainingDistanceMeters / 1000.0)
+            ActiveRoute(routeId(snapshot), snapshot.destinationName, snapshot.remainingDistanceMeters / 1000.0,
+                snapshot.destinationLatitude, snapshot.destinationLongitude)
         )
     }
 

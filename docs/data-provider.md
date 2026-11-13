@@ -32,6 +32,24 @@ A successful envelope includes `schemaVersion:1`, `status:"available"`, `fetched
 
 Failures are `{schemaVersion:1,status:"unavailable",reason:"..."}` with HTTP 400 for invalid input, 429 for quota exhaustion, or 503 for provider/config/transform failure. Android exposes bounded typed failures rather than raw server text. It rejects expired/future/overlong freshness windows, invalid schema/provenance/coordinates and unverified road claims. It keeps no stale fallback cache.
 
+## Route corridor: `POST /v1/stations/route` (2026-11-13)
+
+`server/corridor.py` serves stations along the active route. Only the server reads `KAKAO_REST_API_KEY` (Kakao Mobility directions, header `Authorization: KakaoAK …`); without it the endpoint reports `ROUTING_UNCONFIGURED`. Body (at most 2 KiB):
+
+```json
+{"origin":{"latitude":37.3947,"longitude":127.1112},"destination":{"latitude":37.4979,"longitude":127.0276},"fuel":"B027"}
+```
+
+Both points must be inside 32.5–39N / 124–132E. The server routes origin → destination once (geometry and per-road durations), then searches Opinet (`aroundAll`, radius 5 km) at centres every 6 km along the route, snapped to a 1 km KATEC grid so nearby corridors share the 5-minute sample cache. **Coverage is proven, not assumed:** every route point (checked every 200 m) must lie within 3.9 km of a search centre, so every station within the 1 km corridor width was inside some search; extra centres are added where bends need them, and routes needing more than 40 searches fail as `ROUTE_TOO_LONG` (about 240 km). Each search costs one unit of the shared persistent Opinet quota. An empty `<RESULT/>` counts as "no stations" only when at least one other search in the same corridor returned rows; all-empty fails closed as `PROVIDER_SCHEMA_INVALID`.
+
+Stations within 1 km of the route are bucketed into ten equal stretches; the one closest to the route in each stretch is measured with a routed origin → station → destination request (detour = via-route minus base route, distance and time). Per station the response gives `alongRouteMeters` (route progress from the current origin), `roadDistanceMeters` (progress plus half the routed detour distance), `etaSeconds` (routed time to that progress plus half the detour time) and `detourSeconds`. Straight-line or provider distance is never used. The corridor is reused for 10 minutes while the origin stays within 300 m of it; each request re-projects the current origin, so only stations still ahead are returned. A snapshot expires after 30 s; `stationsObservedAtEpochSeconds` is the oldest provider search used.
+
+Envelope: `schemaVersion:1`, `status`, `fetchedAtEpochSeconds`, `expiresAtEpochSeconds`, `stationsObservedAtEpochSeconds`, `route:{remainingDistanceMeters,remainingDurationSeconds}`, `coverage:{verified,sampleSpacingMeters,searchRadiusMeters}`, `provenance:{stationProvider:"OPINET",stationEndpoint:"aroundAll",routingProvider:"KAKAO_MOBILITY",coordinateSystem:"WGS84"}`, `stations[]` with `id,name,fuel,priceKrwPerLiter,latitude,longitude,alongRouteMeters,roadDistanceMeters,etaSeconds,detourSeconds`. Failures use the same envelope as discover (400 / 429 `QUOTA_EXHAUSTED` / 503 `ROUTING_UNCONFIGURED`, `PROVIDER_UNCONFIGURED`, `ROUTE_NOT_FOUND`, `ROUTE_TOO_LONG`, `ROUTING_UNAVAILABLE`, `ROUTING_SCHEMA_INVALID`, `PROVIDER_*`).
+
+Live check 2026-11-13, Pangyo station → Gangnam station (16.8 km): 1.1 s, 4 Opinet searches, 8 Kakao requests, 7 stations; an opposite-direction expressway rest-area station came back honestly with an 809 s detour.
+
+App side: `GatewayRouteCorridor` (data/poi) posts to `<gateway origin>/v1/stations/route` and revalidates freshness (≤ 30 s), provenance, fuel, ranges and observation age (≤ 15 min). With an active route, `ProductionStationRepository` uses the corridor instead of the nearby catalog: it needs the navigation's destination coordinates (`ActiveRoute.destinationLatitude/Longitude`, from NaviHelper), requires `coverage.verified`, and accepts the routed path for the navigation's own route only while their remaining distances agree within max(2 km, 15 %) — otherwise `ROUTE_COVERAGE_UNVERIFIED`. Stations beyond the navigation's remaining distance are dropped; the usual context re-check applies. Candidates carry `VERIFIED_ROAD_METRICS_WGS84` navigation targets.
+
 ## Exact remaining integration boundary
 
 1. A user-authorized Opinet key and permitted server deployment are required for live testing. None was supplied or searched for; no external API call was attempted.
@@ -39,7 +57,7 @@ Failures are `{schemaVersion:1,status:"unavailable",reason:"..."}` with HTTP 400
 3. A navigation SDK adapter must compute actual road reachability/detour/along-route metrics using verified station coordinates. The app now has a production join boundary described below; its SDK ports intentionally remain unavailable until implemented. Provider distance must never populate road-distance/route-progress fields. Native-KATEC data cannot be silently relabelled WGS84.
 4. The nearby source has no observation timestamp; price-age policy must explicitly handle that unknown. Do not replace null with fetch time to claim fresh price observations.
 
-Verification: `python -m unittest discover -s server/tests -v` exercises the real XML parser, provider request construction, actual local HTTP handler, schema/coordinate rejection, cache expiry, persistent quota, redaction and unconfigured/unsupported states without external network. Android JVM boundary tests inject transport/decoder to exercise repository validation. Android35 instrumentation also exercises the actual platform `org.json` parser for available/unavailable documents and rejects string booleans/trailing payload. Real TLS/provider deployment remains unprobed without a deployed origin/key. The app build/lint and whole project checks are reported separately by integration.
+Verification: `python -m unittest discover -s server/tests -v` (gateway and corridor, with fake Kakao/Opinet fetchers; the corridor tests also check the coverage proof on random winding routes and the KATEC vectors) exercises the real XML parser, provider request construction, actual local HTTP handler, schema/coordinate rejection, cache expiry, persistent quota, redaction and unconfigured/unsupported states without external network. Android JVM boundary tests inject transport/decoder to exercise repository validation. Android35 instrumentation also exercises the actual platform `org.json` parser for available/unavailable documents and rejects string booleans/trailing payload. Real TLS/provider deployment remains unprobed without a deployed origin/key. The app build/lint and whole project checks are reported separately by integration.
 
 ## App production assembly boundary
 
