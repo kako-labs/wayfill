@@ -1,0 +1,42 @@
+[versions]
+agp = "8.10.1"
+kotlin = "2.1.20"
+compose-bom = "2025.04.01"
+activity = "1.10.1"
+lifecycle = "2.9.0"
+coroutines = "1.10.2"
+junit = "4.13.2"
+datastore = "1.3.0"
+okio = "3.17.0"
+pleos-vehicle = "2.3.2"
+pleos-fused-location = "1.1.3"
+pleos-navi-helper = "3.0.5"
+
+[libraries]
+androidx-test-runner = { module = "androidx.test:runner", version = "1.6.2" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version = "1.2.1" }
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+core-ktx = { module = "androidx.core:core-ktx", version = "1.16.0" }
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-foundation = { module = "androidx.compose.foundation:foundation" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
+lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+okio-fakefilesystem = { module = "com.squareup.okio:okio-fakefilesystem", version.ref = "okio" }
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+junit = { module = "junit:junit", version.ref = "junit" }
+pleos-vehicle = { module = "ai.pleos.playground:Vehicle", version.ref = "pleos-vehicle" }
+pleos-fused-location = { module = "ai.pleos.playground:FusedLocation", version.ref = "pleos-fused-location" }
+pleos-navi-helper = { module = "ai.pleos.playground:NaviHelper", version.ref = "pleos-navi-helper" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

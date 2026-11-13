@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WAYFILL · V2 제품 화면</title>
+  <link rel="stylesheet" href="product-vision.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="ui-gallery.html" aria-label="UI 현황판으로 돌아가기">
+        <span class="brand-mark">W</span>
+        <span><strong>WAYFILL</strong><small>경로와 연료를 함께 보는 어시스턴트</small></span>
+      </a>
+      <div class="top-status">
+        <span class="concept-badge">V2 DESIGN STUDY</span>
+        <span id="system-status" class="system-status"><i></i>차량 연결됨 · 정차</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero-card" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <div class="eyebrow"><span>오늘의 경로</span><b>경로 분석 완료</b></div>
+          <h1 id="hero-title">목적지까지 가려면<br><em>중간에 한 번 주유</em>해야 해요.</h1>
+          <p>현재 주행 가능 거리와 실제 경로를 비교했어요. 가장 가까운 안전한 선택만 먼저 보여드릴게요.</p>
+
+          <div class="route-metrics" aria-label="경로 연료 요약">
+            <div><span>주행 가능</span><strong>75<small>km</small></strong></div>
+            <div><span>목적지까지</span><strong>95<small>km</small></strong></div>
+            <div class="risk"><span>부족 거리</span><strong>20<small>km</small></strong></div>
+          </div>
+
+          <div class="hero-actions">
+            <button id="add-route" class="primary">주유소 A를 경유지로</button>
+            <button id="continue-route" class="secondary">계속 가기</button>
+          </div>
+          <button class="reason-link" type="button">왜 이 주유소인가요? <span>↗</span></button>
+        </div>
+
+        <div class="mascot-stage" aria-label="뽀동이 V2 캐릭터 방향">
+          <div class="ambient-ring ring-one"></div><div class="ambient-ring ring-two"></div>
+          <div class="speech"><span>추천 완료</span><strong>지금 들르면<br>1분만 추가돼요!</strong></div>
+          <img src="assets/podong-v2-master-concept.png" alt="손을 흔들며 주유소를 추천하는 뽀동이 V2">
+          <div class="station-float">
+            <span class="station-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M4 21h12M5 10h10M15 7h2a2 2 0 0 1 2 2v7a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg></span>
+            <div><small>추천 · 실제 경로 기준</small><strong>주유소 A</strong><p>20km 앞 · 1분 추가</p></div>
+            <span id="station-state" class="station-state">추천</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="detail-grid" aria-label="차량과 안내 상태">
+        <article class="detail-card fuel-card">
+          <header><div><span class="card-number">01</span><h2>현재 연료</h2></div><span class="data-source">차량에서 수신</span></header>
+          <div class="fuel-content">
+            <div class="fuel-gauge" aria-label="연료 약 42퍼센트"><div><strong>42</strong><small>%</small></div></div>
+            <div class="fuel-copy"><strong>목적지 전 주유가 필요해요</strong><p>도착 뒤 남길 여유거리 50km를 포함해 판단했습니다.</p><span>마지막 갱신 · 방금 전</span></div>
+          </div>
+        </article>
+
+        <article class="detail-card station-card">
+          <header><div><span class="card-number">02</span><h2>추천 근거</h2></div><span class="safe-chip">도달 가능</span></header>
+          <ol class="reason-list">
+            <li><i>1</i><span><strong>현재 연료로 갈 수 있어요</strong><small>도착 시 약 55km 여유</small></span></li>
+            <li><i>2</i><span><strong>경로에서 가장 가까워요</strong><small>다른 후보보다 2분 짧음</small></span></li>
+            <li><i>3</i><span><strong>내비가 실제 진입 경로를 확인해요</strong><small>직선거리로 판단하지 않음</small></span></li>
+          </ol>
+        </article>
+
+        <article class="detail-card preference-card">
+          <header><div><span class="card-number">03</span><h2>안내 방식</h2></div><a href="index.html?scenario=settings">설정</a></header>
+          <button class="preference-row active" data-toggle aria-pressed="true"><span><strong>정차 중 뽀동이 모션</strong><small>짧게 반응하고 곁에 머물러요</small></span><i></i></button>
+          <button class="preference-row active" data-toggle aria-pressed="true"><span><strong>주행 중 차분한 안내</strong><small>작은 아바타와 핵심 정보만 표시</small></span><i></i></button>
+          <div class="reserve-row"><span><strong>판단 여유거리</strong><small>10km 단위</small></span><div><button id="reserve-down" aria-label="여유거리 10km 줄이기">−</button><b id="reserve-value">50km</b><button id="reserve-up" aria-label="여유거리 10km 늘리기">＋</button></div></div>
+        </article>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="주요 화면">
+      <button class="active" data-nav="home" aria-current="page"><span><svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8v10h-6v-6H9v6H3Z"/></svg></span><strong>홈</strong></button>
+      <button data-nav="assist"><span><svg viewBox="0 0 24 24"><path d="M5 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M4 21h12M5 10h10M15 7h2a2 2 0 0 1 2 2v7a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg></span><strong>주유 안내</strong></button>
+      <button data-nav="history"><span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><strong>기록</strong></button>
+      <button data-nav="settings"><span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg></span><strong>설정</strong></button>
+    </nav>
+  </div>
+  <script src="product-vision.js"></script>
+</body>
+</html>

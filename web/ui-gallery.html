@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WAYFILL · UI 현황판</title>
+  <link rel="stylesheet" href="ui-gallery.css">
+</head>
+<body>
+  <header class="gallery-header">
+    <a class="gallery-brand" href="ui-gallery.html" aria-label="WAYFILL UI 현황판 홈">
+      <span class="brand-mark">W</span>
+      <span>WAYFILL <small>UI 현황판</small></span>
+    </a>
+    <div class="header-actions">
+      <span class="approved-badge">승인 UI · 72 frames</span>
+      <a href="product-vision.html">V2 제품 시안</a>
+      <a href="index.html">인터랙티브 데모</a>
+      <a href="animation-lab.html">모션 랩</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="gallery-title">
+      <div>
+        <p class="kicker">WAYFILL · CURRENT UI</p>
+        <h1 id="gallery-title">지금까지 만든 화면을<br>한곳에서 확인하세요.</h1>
+        <p class="hero-copy">왼쪽에서 상황을 고르면 실제 웹 UI와 뽀동이 모션이 재생됩니다. 아래에는 Android 35에서 검증한 네이티브 화면을 함께 정리했습니다.</p>
+      </div>
+      <dl class="summary" aria-label="UI 현황 요약">
+        <div><dt>11</dt><dd>라이브 상황</dd></div>
+        <div><dt>72</dt><dd>애니메이션 프레임</dd></div>
+        <div><dt>3</dt><dd>네이티브 캡처</dd></div>
+      </dl>
+    </section>
+
+    <section class="workspace" aria-labelledby="live-preview-title">
+      <aside class="scenario-rail">
+        <div class="rail-heading">
+          <p class="section-number">01</p>
+          <div><h2 id="live-preview-title">상황별 화면</h2><p>실제 동작하는 미리보기</p></div>
+        </div>
+        <div id="scenario-list"></div>
+      </aside>
+
+      <div class="preview-panel">
+        <div class="preview-toolbar">
+          <div>
+            <div class="preview-title-row"><span id="scenario-index">01</span><h2 id="scenario-title">주유 추천</h2><span id="scenario-motion" class="motion-chip">정차</span></div>
+            <p id="scenario-description">목적지까지 연료가 부족할 때 이유와 추천 주유소를 함께 보여줍니다.</p>
+          </div>
+          <div class="toolbar-actions">
+            <div class="viewport-switcher" role="group" aria-label="미리보기 화면 크기">
+              <button data-viewport="wide">와이드</button>
+              <button data-viewport="tablet" class="active">1024</button>
+              <button data-viewport="compact">390</button>
+            </div>
+            <a id="open-current" href="index.html?scenario=recommendation" target="_blank" rel="noopener">새 창에서 보기 ↗</a>
+          </div>
+        </div>
+
+        <div id="preview-stage" class="preview-stage" aria-live="polite">
+          <div id="preview-sizer" class="preview-sizer">
+            <iframe id="preview-frame" class="preview-frame" title="주유 추천 화면 미리보기"></iframe>
+          </div>
+        </div>
+        <p class="demo-note"><span>DEMO DATA</span> 미리보기의 거리·연료·주유소 값은 UI 확인용 예시이며 운영 기본값이 아닙니다.</p>
+      </div>
+    </section>
+
+    <section class="native-section" aria-labelledby="native-title">
+      <div class="section-heading">
+        <p class="section-number">02</p>
+      <div><h2 id="native-title">네이티브 앱 검증 기준</h2><p>Android 35 · 1024×768에서 확인한 11/11 기준 화면 · 최신 시각 보정은 재빌드 후 교체 예정</p></div>
+      </div>
+      <div class="capture-grid">
+        <figure>
+          <a href="../docs/screenshots/native-home-20261111.png" target="_blank"><img src="../docs/screenshots/native-home-20261111.png" alt="WAYFILL 네이티브 홈 화면" loading="lazy"></a>
+          <figcaption><span>01 · HOME</span><strong>홈과 모니터링 상태</strong><p>실제 데이터 미연결 상태를 솔직하게 표시하고 설정·시연 진입점을 제공합니다.</p></figcaption>
+        </figure>
+        <figure>
+          <a href="../docs/screenshots/native-demo-20261111.png" target="_blank"><img src="../docs/screenshots/native-demo-20261111.png" alt="WAYFILL 네이티브 주유 추천 시연 화면" loading="lazy"></a>
+          <figcaption><span>02 · ASSIST</span><strong>주유 추천과 뽀동이</strong><p>승인된 캐릭터, 문구, 버튼 우선순위를 Compose 화면에서 확인한 모습입니다.</p></figcaption>
+        </figure>
+        <figure>
+          <a href="../docs/screenshots/native-settings-20261111.png" target="_blank"><img src="../docs/screenshots/native-settings-20261111.png" alt="WAYFILL 네이티브 설정 화면" loading="lazy"></a>
+          <figcaption><span>03 · SETTINGS</span><strong>정차 중 설정</strong><p>연료 여유거리와 모션 선호를 정차 상태에서만 안전하게 변경합니다.</p></figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="flow-section" aria-labelledby="flow-title">
+      <div class="section-heading">
+        <p class="section-number">03</p>
+        <div><h2 id="flow-title">화면 흐름</h2><p>추천에서 내비 연결, 주유 완료까지의 기본 경험</p></div>
+      </div>
+      <ol class="flow-list">
+        <li><span>01</span><strong>필요성 안내</strong><p>왜 지금 주유해야 하는지 먼저 설명</p></li>
+        <li><span>02</span><strong>주유소 선택</strong><p>도달 가능성과 우회 시간을 비교</p></li>
+        <li><span>03</span><strong>내비 응답</strong><p>성공 응답 뒤에만 경유지 추가 완료</p></li>
+        <li><span>04</span><strong>차분한 주행</strong><p>주행 중에는 작은 아바타로 축소</p></li>
+        <li><span>05</span><strong>한 번의 인사</strong><p>검증된 주유 이벤트에만 one-shot 반응</p></li>
+      </ol>
+    </section>
+  </main>
+
+  <footer class="gallery-footer">
+    <span>WAYFILL UI overview · 2026.11.12</span>
+    <span>승인 원본 <code>95d0877</code> · 통합 기준 <code>32c7b94</code></span>
+  </footer>
+
+  <script src="ui-gallery.js"></script>
+</body>
+</html>
