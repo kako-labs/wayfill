@@ -1,0 +1,1 @@
+{"name":"wayfill-demo-recorder","private":true,"type":"commonjs","dependencies":{"@grpc/grpc-js":"1.11.3","@grpc/proto-loader":"0.7.13","playwright-core":"1.48.2"}}
