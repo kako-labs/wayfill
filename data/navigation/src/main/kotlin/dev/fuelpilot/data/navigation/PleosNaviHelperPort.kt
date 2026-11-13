@@ -1,6 +1,7 @@
 package dev.fuelpilot.data.navigation
 
 import ai.pleos.playground.navi.constants.NaviErrorCode
+import ai.pleos.playground.navi.constants.NaviMode
 import ai.pleos.playground.navi.constants.RoutePointType
 import ai.pleos.playground.navi.constants.WaypointCmdType
 import ai.pleos.playground.navi.constants.WaypointIndex
@@ -67,7 +68,7 @@ class PleosNaviHelperPort(
             var destination: DestinationInfo? = null
             var currentLocation: CurrentLocationInfo? = null
             fun publishIfComplete() {
-                if (state?.isRouting == true) {
+                if (state?.let { routePhase(it.naviMode, it.isRouting) } == RoutePhase.GUIDING) {
                     val destinationInfo = destination ?: return
                     val current = currentLocation ?: return
                     if (current.routeId.isBlank()) complete(NaviRead.Unavailable)
@@ -77,8 +78,11 @@ class PleosNaviHelperPort(
             val listener = object : NaviHelperEventListener {
                 override fun onRouteStateInfo(routeStateInfo: RouteStateInfo) {
                     state = routeStateInfo
-                    if (!routeStateInfo.isRouting) complete(NaviRead.Available(null))
-                    else publishIfComplete()
+                    when (routePhase(routeStateInfo.naviMode, routeStateInfo.isRouting)) {
+                        RoutePhase.GUIDING -> publishIfComplete()
+                        RoutePhase.CALCULATING -> complete(NaviRead.Unavailable)
+                        RoutePhase.NONE -> complete(NaviRead.Available(null))
+                    }
                 }
 
                 override fun onDestinationInfo(destinationInfo: DestinationInfo) {
@@ -369,4 +373,18 @@ class PleosNaviHelperPort(
         /** The returned destination point may be snapped to a road; a station request never moves this far. */
         const val TRIP_TARGET_TOLERANCE_METERS = 500.0
     }
+}
+
+internal enum class RoutePhase { GUIDING, CALCULATING, NONE }
+
+/**
+ * `isRouting` only means a route is being calculated: during live guidance PLEOS reports
+ * naviMode=ROUTE_GUIDING with isRouting=false (checked on the PLEOS emulator, 2026-11-13). An active route is
+ * therefore the guiding mode; free drive (SAFE_GUIDING) or an idle navigation is confirmed no route, and a
+ * calculation in progress is not yet known either way.
+ */
+internal fun routePhase(mode: NaviMode, isRouting: Boolean): RoutePhase = when {
+    mode == NaviMode.ROUTE_GUIDING || mode == NaviMode.SIMULATION_GUIDING -> RoutePhase.GUIDING
+    isRouting -> RoutePhase.CALCULATING
+    else -> RoutePhase.NONE
 }
