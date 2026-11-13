@@ -16,6 +16,22 @@ object UnverifiedStationCoordinateTransform : VerifiedStationCoordinateTransform
     override suspend fun toKatec(location: VehicleLocation): StationCoordinates? = null
 }
 
+/**
+ * KATEC transform validated against live Opinet rows and independent OSM positions (see [KatecProjection]).
+ * Only the validated Korean extent is converted; anywhere else stays unverified instead of extrapolating.
+ */
+object ValidatedKatecTransform : VerifiedStationCoordinateTransform {
+    private val latitudes = 32.5..39.0
+    private val longitudes = 124.0..132.0
+
+    override suspend fun toKatec(location: VehicleLocation): StationCoordinates? {
+        if (!location.latitude.isFinite() || !location.longitude.isFinite() ||
+            location.latitude !in latitudes || location.longitude !in longitudes) return null
+        val (x, y) = KatecProjection.fromWgs84(location.latitude, location.longitude)
+        return StationCoordinates(CoordinateSystem.KATEC, x, y).takeIf { it.isValid() }
+    }
+}
+
 /** Immutable context must be echoed by the SDK adapter; null route means confirmed no route. */
 data class RoadMetricsRequest(
     val origin: VehicleLocation,

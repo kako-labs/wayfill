@@ -69,6 +69,7 @@ class FuelPilotApplication : Application() {
         // The vehicle's own INFO_FUEL_TYPE selects the provider product; no gasoline default is assumed.
         val fuelProvider = vehicleSource?.let(::VehicleStationFuelProvider)
         val stations = createProductionStations(location, navigation, GatewayStationDiscovery(config),
+            coordinateTransform = ValidatedKatecTransform,
             fuelSource = fuelProvider?.let { provider -> suspend { provider.read() } })
         AppDependencies(PreferencesAssistStateStore(assistDataStore),
             energy = energy, location = location, navigation = navigation, stations = stations,

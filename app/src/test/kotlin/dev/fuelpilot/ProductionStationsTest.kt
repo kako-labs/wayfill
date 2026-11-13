@@ -22,6 +22,15 @@ class ProductionStationsTest {
         assertSame(StationResult.Unavailable, repo.findStations())
     }
 
+    @Test fun validatedKatecTransformConvertsOnlyInsideKorea() = runTest {
+        val seoul = ValidatedKatecTransform.toKatec(VehicleLocation(37.5027, 127.0364))!!
+        assertEquals(CoordinateSystem.KATEC, seoul.system)
+        assertEquals(314996.879, seoul.x, 0.01)
+        assertEquals(544938.297, seoul.y, 0.01)
+        assertNull(ValidatedKatecTransform.toKatec(VehicleLocation(39.237255, -123.150032)))
+        assertNull(ValidatedKatecTransform.toKatec(VehicleLocation(Double.NaN, 127.0)))
+    }
+
     @Test fun vehicleFuelSourceSuppliesTheProductWhenNoFixedFuelIsGiven() = runTest {
         val unknown = createProductionStations(location, navigation, source { error("Fuel must be verified first") },
             fuelSource = { null })
