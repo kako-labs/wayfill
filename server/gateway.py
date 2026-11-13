@@ -1,8 +1,9 @@
-"""Key-isolated Opinet catalog gateway. No route safety claims or CRS guesses."""
+"""Key-isolated station gateway: Opinet catalog (/discover) and, via server.corridor, stations along a
+Kakao-routed corridor (/route). No route safety claims or CRS guesses; keys never leave the server."""
 from collections import OrderedDict
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 import json
 import math
 import os
@@ -76,7 +77,9 @@ class OpinetProvider:
     def configured(self):
         return bool(self._api_key and self._api_key.strip())
 
-    def discover(self, query):
+    def discover(self, query, allow_empty=False):
+        """allow_empty: an empty <RESULT> means "no stations" only when the caller has independent proof the
+        key works (e.g. another sample in the same corridor returned rows); /discover never allows it."""
         # The spec page names the key `certkey`, but the live service (checked 2026-11-13) returns an
         # empty <RESULT/> for `certkey` and real rows only for `code`.
         params = dict(code=self._api_key, out='xml', x=query['x'], y=query['y'],
@@ -91,6 +94,8 @@ class OpinetProvider:
                 raise ValueError('size or XML declaration')
             root = ET.fromstring(body)
             rows = list(root)
+            if allow_empty and root.tag == 'RESULT' and not rows:
+                return []
             if root.tag != 'RESULT' or not 1 <= len(rows) <= MAX_STATIONS or any(row.tag != 'OIL' for row in rows):
                 raise ValueError('schema')
             stations = []
@@ -190,7 +195,11 @@ def strict_object(pairs):
     return result
 
 
-def handler_for(gateway):
+def handler_for(gateway, corridor=None):
+    routes = {'/v1/stations/discover': gateway.discover}
+    if corridor is not None:
+        routes['/v1/stations/route'] = corridor.measure
+
     class Handler(BaseHTTPRequestHandler):
         # Bind behind a TLS reverse proxy; suppress access logs/location/credential details.
         def log_message(self, format, *args):
@@ -198,7 +207,8 @@ def handler_for(gateway):
 
         def do_POST(self):
             self.connection.settimeout(5)
-            if self.path != '/v1/stations/discover':
+            endpoint = routes.get(self.path)
+            if endpoint is None:
                 self.send_error(404)
                 return
             try:
@@ -211,7 +221,7 @@ def handler_for(gateway):
                 if len(body) != length:
                     raise ValueError('truncated')
                 query = json.loads(body, object_pairs_hook=strict_object)
-                code, result = gateway.discover(query)
+                code, result = endpoint(query)
             except (ValueError, UnicodeError, TimeoutError):
                 code, result = 400, dict(schemaVersion=1, status='unavailable', reason='INVALID_QUERY')
             payload = json.dumps(result, allow_nan=False).encode('utf-8')
@@ -225,10 +235,14 @@ def handler_for(gateway):
 
 
 def main():
-    # Only the server reads this environment variable; never put it in app config.
+    from server.corridor import KakaoDirections, RouteCorridor
+    # Only the server reads these environment variables; never put them in app config.
     provider = OpinetProvider(os.environ.get('OPINET_API_KEY', ''))
+    routing = KakaoDirections(os.environ.get('KAKAO_REST_API_KEY', ''))
     quota = SqliteQuota(Path(os.environ.get('WAYFILL_QUOTA_DB', 'opinet-quota.sqlite')))
-    HTTPServer(('127.0.0.1', 8787), handler_for(Gateway(provider, quota))).serve_forever()
+    handler = handler_for(Gateway(provider, quota), RouteCorridor(routing, provider, quota))
+    # Threaded: a corridor build takes seconds and must not stall /discover.
+    ThreadingHTTPServer(('127.0.0.1', 8787), handler).serve_forever()
 
 
 if __name__ == '__main__':
