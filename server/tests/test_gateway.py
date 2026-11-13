@@ -125,6 +125,30 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual('QUOTA_EXHAUSTED', gateway.discover(dict(QUERY, x=313000.0))[1]['reason'])
         self.assertEqual([['KEYONE'], ['KEYTWO']], [parse_qs(urlsplit(u).query)['code'] for u in urls])
 
+    def test_rejected_looking_key_fails_over_and_is_retired_for_the_day(self):
+        urls = []
+        def fetch(url, timeout, limit):
+            urls.append(parse_qs(urlsplit(url).query)['code'][0])
+            return b'<RESULT></RESULT>' if urls[-1] == 'DEADKEY' else XML
+        first = SqliteQuota(Path(self.tmp.name) / 'dead', daily_limit=300)
+        gateway = Gateway(OpinetPool([(OpinetProvider('DEADKEY', fetch), first),
+                                      (OpinetProvider('GOODKEY', fetch), SqliteQuota(Path(self.tmp.name) / 'good'))]),
+                          clock=lambda: self.now)
+        self.assertEqual(200, gateway.discover(QUERY)[0])
+        self.assertEqual(200, gateway.discover(dict(QUERY, x=314000.0))[0])
+        self.assertEqual(['DEADKEY', 'GOODKEY', 'GOODKEY'], urls)
+        self.assertFalse(first.consume(self.now))
+
+    def test_both_keys_empty_is_an_empty_area_not_a_dead_key(self):
+        def fetch(url, timeout, limit):
+            return b'<RESULT></RESULT>'
+        first = SqliteQuota(Path(self.tmp.name) / 'e1')
+        gateway = Gateway(OpinetPool([(OpinetProvider('K1', fetch), first),
+                                      (OpinetProvider('K2', fetch), SqliteQuota(Path(self.tmp.name) / 'e2'))]),
+                          clock=lambda: self.now)
+        self.assertEqual((503, 'PROVIDER_SCHEMA_INVALID'), (gateway.discover(QUERY)[0], gateway.discover(dict(QUERY, x=1.0))[1]['reason']))
+        self.assertTrue(first.consume(self.now))
+
     def test_pool_reads_numbered_keys_from_env_with_quota_files_named_by_slot(self):
         env = {'OPINET_API_KEY_2': 'BBBBBBBBBB', 'OPINET_API_KEY_1': 'AAAAAAAAAA', 'OPINET_API_KEY_3': ' ',
                'OPINET_API_KEY_X': 'nope', 'KAKAO_REST_API_KEY': 'k'}

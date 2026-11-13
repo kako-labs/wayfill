@@ -249,6 +249,37 @@ class CorridorTests(unittest.TestCase):
         self.assertEqual((429, 'RATE_LIMITED'), (corridor.measure(self.query(), 'car-1')[0], corridor.measure(self.query(), 'car-1')[1]['reason']))
         self.assertEqual(200, corridor.measure(self.query(), 'car-2')[0])
 
+    def two_key_pool(self, dead_codes):
+        good = self.opinet._fetch
+        def fetch(url, timeout, limit):
+            if parse_qs(urlsplit(url).query)['code'][0] in dead_codes:
+                self.opinet_calls.append(url)
+                return b'<RESULT></RESULT>'
+            return good(url, timeout, limit)
+        first = SqliteQuota(Path(self.tmp.name) / 'k1')
+        second = SqliteQuota(Path(self.tmp.name) / 'k2')
+        return first, second, OpinetPool([(OpinetProvider('KEYONE', fetch), first), (OpinetProvider('KEYTWO', fetch), second)])
+
+    def test_dead_first_key_is_retired_and_the_build_runs_on_the_second(self):
+        first, second, pool = self.two_key_pool({'KEYONE'})
+        corridor = RouteCorridor(self.routing, pool, self.routing_quota, clock=lambda: self.now)
+        status, result = corridor.measure(self.query())
+        self.assertEqual(200, status, result)
+        self.assertEqual(['S1', 'S5'], [s['id'] for s in result['stations']])
+        self.assertFalse(first.consume(self.now))
+        self.assertTrue(second.consume(self.now))
+
+    def test_known_station_search_proves_empty_searches_are_real(self):
+        first, _, pool = self.two_key_pool(set())
+        corridor = RouteCorridor(self.routing, pool, self.routing_quota, clock=lambda: self.now)
+        known = katec.from_wgs84(*STATIONS['S1'])
+        nowhere = katec.from_wgs84(36.0, 128.5)
+        corridor._samples[(round(known[0], 1), round(known[1], 1), 'B027')] = (self.now, ['cached'])
+        plan = [(known, (self.now, ['cached'])), (nowhere, None)]
+        fetched = corridor._fetch_missing(plan, [nowhere], 'B027', self.now)
+        self.assertEqual([], fetched[nowhere][1])
+        self.assertTrue(first.consume(self.now))  # the canary answered with stations: the key is fine
+
     def test_routing_calls_are_metered(self):
         tight = SqliteQuota(Path(self.tmp.name) / 'tight-routing', daily_limit=2, ceiling=10000)
         corridor = RouteCorridor(self.routing, OpinetPool([(self.opinet, self.quota)]), tight, clock=lambda: self.now)

@@ -345,12 +345,7 @@ class RouteCorridor:
         with self._lock:
             plan = [(c, self._cached_sample(c, fuel, now)) for c in centres]
         missing = [c for c, cached in plan if cached is None]
-        # Reserve the whole provider budget up front (all or nothing), keeping a share for /discover.
-        provider = self.pool.reserve(now, units=len(missing), keep=DISCOVER_RESERVE) if missing else None
-        if missing and provider is None:
-            raise ProviderFailure('QUOTA_EXHAUSTED')
-        with ThreadPoolExecutor(max_workers=self.workers) as executor:
-            fetched = dict(zip(missing, executor.map(lambda c: self._fetch_sample(provider, c, fuel, now), missing)))
+        fetched = self._fetch_missing(plan, missing, fuel, now) if missing else {}
         samples = [cached or fetched[c] for c, cached in plan]
         batches = [rows for _, rows in samples]
         if not any(batches):
@@ -385,6 +380,31 @@ class RouteCorridor:
         return dict(token=secrets.token_urlsafe(TOKEN_BYTES), created=now, destination=destination, fuel=fuel,
                     priority=priority, hinted=navigation_m is not None,
                     observed=min(at for at, _ in samples), route=base, candidates=measured)
+
+    def _fetch_missing(self, plan, missing, fuel, now):
+        """Fetch the uncached searches on one key, reserving them all up front (keeping a share for /discover).
+        Empty everywhere is only believed once the same key answers a search known to have stations, or a second
+        key agrees; a key that answered nothing where another key found stations is retired for today."""
+        known = next((c for c, cached in plan if cached and cached[1]), None)
+        suspects = []
+        while True:
+            provider = self.pool.reserve(now, units=len(missing), keep=DISCOVER_RESERVE, exclude=suspects)
+            if provider is None:
+                if suspects:
+                    raise ProviderFailure('PROVIDER_SCHEMA_INVALID')
+                raise ProviderFailure('QUOTA_EXHAUSTED')
+            with ThreadPoolExecutor(max_workers=self.workers) as executor:
+                fetched = dict(zip(missing, executor.map(lambda c: self._fetch_sample(provider, c, fuel, now), missing)))
+            if any(rows for _, rows in fetched.values()):
+                for suspect in suspects:
+                    self.pool.exhaust(suspect, now)
+                return fetched
+            if known is not None and self.pool.reserve(now, keep=DISCOVER_RESERVE, only=provider) is provider:
+                # Same key, a search that had stations before: if it still has them, the empties are real.
+                if self._fetch_sample(provider, known, fuel, now)[1]:
+                    return fetched
+                self.pool.exhaust(provider, now)
+            suspects.append(provider)
 
     def _cached_sample(self, centre, fuel, now):
         cached = self._samples.get((round(centre[0], 1), round(centre[1], 1), fuel))

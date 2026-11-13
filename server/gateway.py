@@ -150,6 +150,16 @@ class SqliteQuota:
             db.execute('INSERT OR REPLACE INTO quota VALUES (1,?,?)', (day, used + units))
             return True
 
+    def exhaust(self, now):
+        """Mark today's quota used up, e.g. when the provider has evidently stopped answering this key."""
+        day = datetime.fromtimestamp(now, timezone(timedelta(hours=9))).date().isoformat()
+        with closing(sqlite3.connect(self.path, timeout=2)) as db, db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT day,calls FROM quota WHERE id=1').fetchone()
+            if not (row and day < row[0]):
+                db.execute('INSERT OR REPLACE INTO quota VALUES (1,?,?)',
+                           (day, max(self.limit, row[1] if row and row[0] == day else 0)))
+
 
 class OpinetPool:
     """Several Opinet keys, each with its own persistent daily quota. Reservations fill the first key with
@@ -161,12 +171,22 @@ class OpinetPool:
     def configured(self):
         return bool(self._entries)
 
-    def reserve(self, now, units=1, keep=0):
+    def reserve(self, now, units=1, keep=0, exclude=(), only=None):
         """The provider whose quota took all `units`, or None when no single key has room."""
         for provider, quota in self._entries:
+            if provider in exclude or (only is not None and provider is not only):
+                continue
             if quota.consume(now, units=units, keep=keep):
                 return provider
         return None
+
+    def exhaust(self, provider, now):
+        """Opinet answers a rejected key (e.g. one over its real daily limit, perhaps used elsewhere too) with an
+        empty result, indistinguishable from "no stations". Once another key proves stations exist where this
+        one returned none, this key is retired for the rest of the day so later requests go straight on."""
+        for candidate, quota in self._entries:
+            if candidate is provider:
+                quota.exhaust(now)
 
 
 class SlidingWindowLimiter:
@@ -234,12 +254,9 @@ class Gateway:
             if self.fetch_limiter is not None and not self.fetch_limiter.allow(client):
                 return rate_limited()
             try:
-                provider = self.pool.reserve(now)
-                if provider is None:
-                    return error(429, 'QUOTA_EXHAUSTED')
-                stations = provider.discover(query)
+                stations = self._fetch(query, now)
             except ProviderFailure as failure:
-                return error(503, failure.reason)
+                return error(429 if failure.reason == 'QUOTA_EXHAUSTED' else 503, failure.reason)
             except Exception:
                 return error(503, 'PROVIDER_UNAVAILABLE')
             result = dict(schemaVersion=1, status='available', fetchedAtEpochSeconds=now,
@@ -250,6 +267,28 @@ class Gateway:
             while len(self._cache) > 128:
                 self._cache.popitem(last=False)
             return 200, result
+
+
+    def _fetch(self, query, now):
+        """An empty or malformed answer is retried once on the next key; if that key returns stations, the first
+        one is retired for today. Both failing keeps the first failure (an empty area costs one extra call)."""
+        first = self.pool.reserve(now)
+        if first is None:
+            raise ProviderFailure('QUOTA_EXHAUSTED')
+        try:
+            return first.discover(query)
+        except ProviderFailure as failure:
+            if failure.reason != 'PROVIDER_SCHEMA_INVALID':
+                raise
+            second = self.pool.reserve(now, exclude=(first,))
+            if second is None:
+                raise
+            try:
+                stations = second.discover(query)
+            except ProviderFailure:
+                raise failure from None
+            self.pool.exhaust(first, now)
+            return stations
 
 
 def strict_object(pairs):
