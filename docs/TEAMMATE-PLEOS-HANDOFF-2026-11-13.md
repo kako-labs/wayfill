@@ -6,7 +6,7 @@
 
 - 앱명: **WAYFILL**
 - 팀명: **KA&KO**
-- 대표자: **송호현**
+- 대표자: 접수양식 01에 기재(저장소에는 실명을 적지 않음)
 - 참가 인원·부문: **2명 · 일반 부문**
 - 인계 브랜치: `feature/prepleos-hardening-20261113`
 - 앱 버전: `0.2.0-prepleos` / code 2
@@ -17,7 +17,7 @@
 ## 받기
 
 ```powershell
-git clone --branch feature/prepleos-hardening-20261113 --single-branch https://github.com/kako-labs/fuel-pilot.git wayfill
+git clone --branch feature/prepleos-hardening-20261113 --single-branch https://github.com/kako-labs/wayfill.git wayfill
 cd wayfill
 git rev-parse HEAD
 python scripts/dev.py doctor

@@ -1,11 +1,11 @@
 # 다른 노트북에서 이어가기 · 2026-11-13
 
-현재 브랜치는 `feature/prepleos-hardening-20261113`이다. 실제 PLEOS 연결 직전의 GitHub 인계 브랜치다. [11월 13일 최신 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/wayfill-prepleos-handoff-2026-11-13)에 APK·소스 ZIP·검증 기록을 함께 둔다. 과거 `main`, `integrate/podong-approved`, `product/soft-sunset-prepleos-20261113`과 구분한다.
+현재 브랜치는 `feature/prepleos-hardening-20261113`이다. 실제 PLEOS 연결 직전의 GitHub 인계 브랜치다. [11월 13일 최신 Release](https://github.com/kako-labs/wayfill/releases/tag/wayfill-prepleos-handoff-2026-11-13)에 APK·소스 ZIP·검증 기록을 함께 둔다. 과거 `main`, `integrate/podong-approved`, `product/soft-sunset-prepleos-20261113`과 구분한다.
 
 ## GitHub에서 최신 소스 받기
 
 ```powershell
-git clone --branch feature/prepleos-hardening-20261113 --single-branch https://github.com/kako-labs/fuel-pilot.git wayfill
+git clone --branch feature/prepleos-hardening-20261113 --single-branch https://github.com/kako-labs/wayfill.git wayfill
 cd wayfill
 git log -2 --oneline
 ```
@@ -20,7 +20,7 @@ Git 이력을 포함해 그대로 받으려면 전달한 bundle 파일이 있는
 
 ```powershell
 git clone -b feature/prepleos-hardening-20261113 wayfill-prepleos-20261113.bundle wayfill
-cd fuel-pilot
+cd wayfill
 git log -1 --oneline
 git status --short
 ```

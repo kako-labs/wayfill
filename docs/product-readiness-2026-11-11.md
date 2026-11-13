@@ -22,7 +22,7 @@ Opinet API 사용 승인과 서버 키, HTTPS 배포 주소, 공급자 약관·�
 
 ## 검증 기록
 
-로컬 최종 실행은 아래와 같다. 정확한 전달 커밋, 소스 ZIP·CI 아티팩트와 원격 실행 결과는 [통합 PR #2](https://github.com/kako-labs/fuel-pilot/pull/2)에서 확인한다. 로컬 검사와 GitHub 실행을 구분한다.
+로컬 최종 실행은 아래와 같다. 정확한 전달 커밋, 소스 ZIP·CI 아티팩트와 원격 실행 결과는 [통합 PR #2](https://github.com/kako-labs/wayfill/pull/2)에서 확인한다. 로컬 검사와 GitHub 실행을 구분한다.
 
 - 웹 검사: 17개 통과. 웹/Android 공통 아틀라스 72프레임 일치 검사 통과.
 - 서버 검사: 9개 통과.
