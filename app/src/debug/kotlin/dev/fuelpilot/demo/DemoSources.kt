@@ -22,6 +22,8 @@ class DemoSources : EnergyRepository, LocationRepository, NavigationRepository, 
         private set
     var navigationSucceeds = true
     var navigationDelayMs = 700L
+    val currentRouteId: String?
+        get() = routeId.takeUnless { scenario == "nearby" }
     override val motion = MutableStateFlow(Motion.Parked)
     override val refuels = MutableSharedFlow<RefuelEvent>(extraBufferCapacity = 16)
     private val refresh = MutableSharedFlow<Unit>(extraBufferCapacity = 16)

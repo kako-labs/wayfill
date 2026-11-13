@@ -34,7 +34,13 @@ class VisualReviewTest {
             compose.activity.runtime.dispatch(AssistIntent.CharacterChanged(true))
             compose.activity.sources.select("recommendation")
         }
-        waitFor{compose.activity.runtime.state.value.ui.screen==Screen.Recommendation}
+        waitFor{
+            val state=compose.activity.runtime.state.value
+            val stationId=state.presentation.route.recommended?.id
+            state.ui.screen==Screen.Recommendation && stationId!=null &&
+                state.persisted.routeId==compose.activity.sources.currentRouteId &&
+                state.navigationTargets.containsKey(stationId)
+        }
         capture("home")
         compose.onNodeWithTag("nav_assist").performClick()
         compose.onNodeWithTag("parked_details").assertIsDisplayed()

@@ -37,7 +37,12 @@ class NativeDemoTest {
     }
 
     @Test fun wholeFlowNavigationSuccessFailureAndNearby() {
-        waitForState { compose.activity.runtime.state.value.presentation.route.recommended != null }
+        waitForState {
+            val state = compose.activity.runtime.state.value
+            val stationId = state.presentation.route.recommended?.id
+            stationId != null && state.persisted.routeId == compose.activity.sources.currentRouteId &&
+                state.navigationTargets.containsKey(stationId)
+        }
         compose.onNodeWithTag("nav_assist").performClick()
         compose.onNode(hasTestTag("parked_guide_now") or hasTestTag("home_guide_now") or hasTestTag("guide_now"))
             .assertIsDisplayed().assertHasClickAction()
