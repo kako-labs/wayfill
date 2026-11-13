@@ -1,13 +1,31 @@
 import com.android.build.api.dsl.ManagedVirtualDevice
+import java.util.Properties
 
 
 plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.android); alias(libs.plugins.kotlin.compose) }
 fun quotedBuildConfig(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r") + "\""
+// Release signing comes from local.properties (release.storeFile, release.storePassword, release.keyAlias,
+// release.keyPassword), which Git ignores. Without it assembleRelease still builds, unsigned.
+val localProperties = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+val releaseStore = localProperties.getProperty("release.storeFile")?.let(::file)?.takeIf { it.exists() }
 android {
     namespace = "dev.fuelpilot"; compileSdk = 35
-    defaultConfig { applicationId = "dev.fuelpilot"; minSdk = 28; targetSdk = 35; versionCode = 2; versionName = "0.2.0-prepleos"
+    defaultConfig { applicationId = "dev.fuelpilot"; minSdk = 28; targetSdk = 35; versionCode = 3; versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "STATION_GATEWAY_ORIGIN", quotedBuildConfig(providers.gradleProperty("stationGatewayOrigin").orElse("").get()))
+    }
+    if (releaseStore != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = releaseStore
+                storePassword = localProperties.getProperty("release.storePassword")
+                keyAlias = localProperties.getProperty("release.keyAlias")
+                keyPassword = localProperties.getProperty("release.keyPassword")
+            }
+        }
+        buildTypes.getByName("release").signingConfig = signingConfigs.getByName("release")
     }
     buildFeatures { compose = true; buildConfig = true }
     testOptions {
