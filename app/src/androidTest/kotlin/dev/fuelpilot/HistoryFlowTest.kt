@@ -46,6 +46,8 @@ class HistoryFlowTest {
         compose.onNodeWithTag("history_delete").performClick()
         compose.onNodeWithTag("history_confirm_delete").performClick()
         waitFor{compose.activity.runtime.state.value.persisted.refuelHistory.isEmpty()}
+        // The store empties before the list recomposes; wait for the empty state to be drawn.
+        waitFor{compose.onAllNodesWithTag("history_empty").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithTag("history_empty").assertIsDisplayed()
         compose.runOnIdle{compose.activity.sources.duplicate()}
         compose.waitForIdle()
