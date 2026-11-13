@@ -65,8 +65,14 @@ class DemoSources : EnergyRepository, LocationRepository, NavigationRepository, 
     override suspend fun findStations(): StationResult {
         val distance = if (scenario == "passing") 3.0 else 15.0
         return StationResult.Available(listOf(
-            FuelStationCandidate("demo-a", "시연 주유소 A", distance, distance, 10, 2, OpenStatus.OPEN, true, true),
-            FuelStationCandidate("demo-b", "시연 주유소 B", 210.0, 210.0, 80, 3, OpenStatus.OPEN, true, true),
+            FuelStationCandidate("demo-a", "시연 주유소 A", distance, distance, 10, 2, OpenStatus.OPEN, true, true,
+                VerifiedStationNavigationTarget("demo-a", 37.51, 127.01,
+                    NavigationTargetProvenance.VERIFIED_PROVIDER_WGS84,
+                    poiId = "synthetic-demo-a", poiProvider = "WAYFILL_SYNTHETIC_ONLY")),
+            FuelStationCandidate("demo-b", "시연 주유소 B", 210.0, 210.0, 80, 3, OpenStatus.OPEN, true, true,
+                VerifiedStationNavigationTarget("demo-b", 37.62, 127.12,
+                    NavigationTargetProvenance.VERIFIED_PROVIDER_WGS84,
+                    poiId = "synthetic-demo-b", poiProvider = "WAYFILL_SYNTHETIC_ONLY")),
         ))
     }
     override suspend fun capabilities() = NavigationCapabilities(
