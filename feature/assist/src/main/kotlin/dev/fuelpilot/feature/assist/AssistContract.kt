@@ -265,12 +265,7 @@ private fun resolveScreen(state: AssistViewState): AssistViewState {
             routeStation = (result as? WaypointResult.Succeeded)?.stationId,
             error = result?.errorMessage(),
             detailsAvailable = state.ui.motion == Motion.Parked && recommendation,
-            statusMessage = when (presentation.availability) {
-                AssistAvailability.READY -> null
-                AssistAvailability.STALE -> "최신 차량과 경로 정보를 확인 중이에요."
-                AssistAvailability.UNAVAILABLE -> "차량과 경로 정보를 확인할 수 없어요."
-                AssistAvailability.UNSUPPORTED -> "이 환경에서는 주유 안내 정보를 지원하지 않아요."
-            },
+            statusMessage = presentation.statusMessage(),
         ),
     )
 }

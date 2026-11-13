@@ -53,8 +53,10 @@ class AppCoordinator(private val dependencies: AppDependencies) {
         val l = async { readOr<LocationResult>(LocationResult.Unavailable) { dependencies.location.readLocation() } }
         val r = async { readOr<RouteResult>(RouteResult.Unavailable) { dependencies.navigation.readRoute() } }
         val energy = e.await(); val location = l.await(); val route = r.await()
+        val contextual = dependencies.stations as? ContextualStationRepository
+        // A contextual source is not queried without a fresh origin and route; then stations are not the cause.
+        val stationsQueried = contextual == null || (location is LocationResult.Available && route is RouteResult.Available)
         val stations = readOr<StationResult>(StationResult.Unavailable) {
-            val contextual = dependencies.stations as? ContextualStationRepository
             if (contextual == null) dependencies.stations.findStations()
             else if (location is LocationResult.Available && route is RouteResult.Available)
                 contextual.findStationsFor(location.location, route.route)
@@ -75,8 +77,13 @@ class AppCoordinator(private val dependencies: AppDependencies) {
             SignalStatus.STALE in signals -> AssistAvailability.STALE
             else -> null
         }
+        val blockedBy = listOf(AssistSignal.VEHICLE_ENERGY, AssistSignal.LOCATION, AssistSignal.ROUTE, AssistSignal.STATIONS)
+            .zip(signals)
+            .filter { (signal, status) -> status != SignalStatus.FRESH && (signal != AssistSignal.STATIONS || stationsQueried) }
+            .map { it.first }
+            .toSet()
         var navigationTargets = emptyMap<String, NavigationTarget>()
-        val presentation = if (unavailable != null) unavailable(unavailable) else {
+        val presentation = if (unavailable != null) unavailable(unavailable).copy(blockedBy = blockedBy) else {
             val range = (energy as EnergyResult.Available).rangeRemainingKm
             val activeRoute = (route as RouteResult.Available).route
             val candidates = (stations as StationResult.Available).stations

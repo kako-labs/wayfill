@@ -173,6 +173,35 @@ class AppDependenciesTest {
         assertNull(unsupported.route.recommended)
     }
 
+    @Test fun missingStationSourceIsNamedWithoutBlamingTheVehicle() = runTest {
+        val p = fixture(stations = object : StationRepository {
+            override suspend fun findStations() = StationResult.Unavailable
+        }).coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertEquals(AssistAvailability.UNAVAILABLE, p.availability)
+        assertEquals(setOf(AssistSignal.STATIONS), p.blockedBy)
+        assertEquals("차량과 경로는 확인했어요. 주유소 정보가 연결되면 안내할게요.", p.statusMessage())
+    }
+
+    @Test fun unqueriedContextualStationsAreNotBlamedForAMissingLocation() = runTest {
+        val base = fixture()
+        val stations = object : ContextualStationRepository {
+            override suspend fun findStations(): StationResult = error("Context-free query must not be used")
+            override suspend fun findStationsFor(origin: VehicleLocation, route: ActiveRoute?): StationResult = error("Not queried without location")
+        }
+        val location = object : LocationRepository { override suspend fun readLocation() = LocationResult.Unavailable }
+        val p = AppDependencies(base.store, base.energy, location, stations, base.navigation, base.vehicleEvents)
+            .coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertEquals(setOf(AssistSignal.LOCATION), p.blockedBy)
+        assertEquals("현재 위치 정보를 확인할 수 없어요.", p.statusMessage())
+    }
+
+    @Test fun readyPresentationHasNoBlockedSignals() = runTest {
+        val p = fixture().coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertEquals(AssistAvailability.READY, p.availability)
+        assertTrue(p.blockedBy.isEmpty())
+        assertNull(p.statusMessage())
+    }
+
     @Test fun stalePoiAndPermissionFailureExposeNoStaleRecommendation() = runTest {
         val stale = fixture(stations = object : StationRepository {
             override suspend fun findStations() = StationResult.Stale(listOf(candidate))

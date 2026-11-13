@@ -25,7 +25,10 @@ import java.util.Locale
 import dev.fuelpilot.data.navigation.WaypointResult
 import dev.fuelpilot.feature.assist.AssistAvailability
 import dev.fuelpilot.feature.assist.AssistIntent
+import dev.fuelpilot.feature.assist.AssistSignal
 import dev.fuelpilot.feature.assist.AssistViewState
+import dev.fuelpilot.feature.assist.labels
+import dev.fuelpilot.feature.assist.onlyStationsMissing
 
 private val Graphite = FuelPilotColors.Surface
 private val Gold = FuelPilotColors.Gold
@@ -69,6 +72,8 @@ internal data class AdaptiveUiModel(
     /** Non-null only when the host contract can accept this exact recommendation now. */
     val actionableStationId: String?,
     val actionableRecommendationKey: String?,
+    /** Inputs that kept the presentation from READY; copy uses it to name the real cause. */
+    val blockedBy: Set<AssistSignal> = emptySet(),
 )
 
 /** Pure UI policy used by both Compose and state-focused tests. */
@@ -109,6 +114,7 @@ internal fun adaptiveUiModel(state: AssistViewState): AdaptiveUiModel {
         status,
         actionable,
         recommendationKey.takeIf { actionable != null },
+        presentation.blockedBy.takeIf { status in setOf(AdaptiveStatus.Stale, AdaptiveStatus.Unsupported, AdaptiveStatus.Unavailable) }.orEmpty(),
     )
 }
 
@@ -316,10 +322,12 @@ private fun FuelPilotContent(
     onEvent: (AssistIntent) -> Unit,
 ) {
     val station = route.recommended
-    val intro = when (model.status) {
+    val stationsOnly = model.blockedBy.onlyStationsMissing() &&
+        model.status in setOf(AdaptiveStatus.Unsupported, AdaptiveStatus.Unavailable)
+    val intro = if (stationsOnly) "주유소 정보를 기다리고 있어요" else when (model.status) {
         AdaptiveStatus.Loading, AdaptiveStatus.Stale -> "잠시만요, 확인하고 있어요"
         AdaptiveStatus.Unsupported -> "여기서는 안내가 어려워요"
-        AdaptiveStatus.Unavailable -> "차량 정보를 확인해 주세요"
+        AdaptiveStatus.Unavailable -> if (model.blockedBy.isEmpty()) "차량 정보를 확인해 주세요" else "${model.blockedBy.labels()} 정보를 확인해 주세요"
         AdaptiveStatus.Error -> "다시 한번 확인해 볼까요?"
         AdaptiveStatus.Success -> "안내 준비가 끝났어요"
         AdaptiveStatus.Refuel -> "주유 완료를 확인했어요"
@@ -328,7 +336,7 @@ private fun FuelPilotContent(
     VehicleLayout(wide, { PodongIntro(intro, calm = true) }) {
         Panel(showIdentity = false, modifier = Modifier.testTag("state_${model.status.name.lowercase(Locale.ROOT)}")) {
             StatusRow(
-                label = when (model.status) {
+                label = if (stationsOnly) "주유소 미연결" else when (model.status) {
                     AdaptiveStatus.Loading -> "불러오는 중"
                     AdaptiveStatus.Stale -> "최신 정보 확인 중"
                     AdaptiveStatus.Unsupported -> "지원되지 않음"
@@ -341,12 +349,14 @@ private fun FuelPilotContent(
                 state = "P · 상세 기능 사용 가능",
                 alert = model.status in setOf(AdaptiveStatus.Error, AdaptiveStatus.Unsupported, AdaptiveStatus.Unavailable),
             )
-            state.statusMessage?.let { Text(it, color = if (model.status == AdaptiveStatus.Unsupported) Coral else White, fontSize = 24.sp, lineHeight = 33.sp) }
+            state.statusMessage?.let { Text(it, color = if (model.status == AdaptiveStatus.Unsupported && !stationsOnly) Coral else White, fontSize = 24.sp, lineHeight = 33.sp) }
             state.error?.let { Text(it, color = Coral, fontSize = 22.sp, lineHeight = 31.sp) }
             if (model.status in setOf(AdaptiveStatus.Loading, AdaptiveStatus.Stale)) {
                 LinearProgressIndicator(Modifier.fillMaxWidth(), color = Gold, trackColor = Line)
             }
-            if (model.status == AdaptiveStatus.Unsupported) {
+            if (stationsOnly) {
+                Text("주유소 데이터(공급자 API와 실제 도로 거리)가 연결되기 전에는 추천을 만들지 않아요. 임의의 주유소나 거리를 표시하지 않습니다.", color = Muted, fontSize = 20.sp, lineHeight = 29.sp)
+            } else if (model.status == AdaptiveStatus.Unsupported) {
                 Text("지원 SDK 또는 권한이 준비되기 전에는 실제 안내를 시작하지 않아요. 임의의 거리나 주유소를 표시하지 않습니다.", color = Muted, fontSize = 20.sp, lineHeight = 29.sp)
             }
             if (station != null && model.status == AdaptiveStatus.Recommendation) {

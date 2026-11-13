@@ -97,6 +97,7 @@ fun AppShell(
     val readyLabel = when {
         !state.ready -> "준비 중"
         state.presentation.availability == AssistAvailability.READY -> if (state.ui.motion == Motion.Parked) "정차 · 분석 가능" else "주행 중"
+        state.presentation.blockedBy.onlyStationsMissing() -> "주유소 연결 필요"
         state.presentation.availability == AssistAvailability.UNSUPPORTED -> "연결 필요"
         else -> "정보 확인 필요"
     }
@@ -168,12 +169,17 @@ fun AppShell(
         shadowElevation = 10.dp,
     ) {
         Column(Modifier.fillMaxWidth().padding(30.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+            val blocked = state.presentation.blockedBy
             Text(
                 when (stateTag) {
                     "loading" -> "준비 중"
                     "stale" -> "최신 정보 확인 중"
-                    "unsupported" -> "차량 연결 필요"
-                    "unavailable" -> "정보 없음"
+                    "unsupported", "unavailable" -> when {
+                        blocked.onlyStationsMissing() -> "주유소 미연결"
+                        blocked.isNotEmpty() -> "${blocked.labels()} 확인 필요"
+                        stateTag == "unsupported" -> "차량 연결 필요"
+                        else -> "정보 없음"
+                    }
                     "error" -> "확인 필요"
                     "success" -> "완료"
                     else -> "현재 상태"
