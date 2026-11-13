@@ -157,12 +157,21 @@ sealed interface NaviRead<out T> {
 
 enum class NaviCommandStatus { SUCCEEDED, FAILED, TIMED_OUT, UNSUPPORTED }
 
+/** Road distance and time the vehicle navigation computed from its own current position. */
+data class NaviTrip(val distanceMeters: Int, val etaSeconds: Int)
+
+/** The vehicle navigation's own current position: the origin its routing and trip previews use. */
+data class NaviPosition(val latitude: Double, val longitude: Double)
+
 interface NaviHelperPort {
     fun isSupported(): Boolean
     suspend fun readRoute(): NaviRead<NaviRouteSnapshot?>
     suspend fun readWaypointCount(): NaviRead<Int>
     suspend fun addWaypoint(target: NavigationTarget, index: Int): NaviCommandStatus
     suspend fun setDestination(target: NavigationTarget): NaviCommandStatus
+    /** Side-effect-free trip preview to one point; the active route is not changed. */
+    suspend fun measureTrip(latitude: Double, longitude: Double): NaviRead<NaviTrip> = NaviRead.Unsupported
+    suspend fun readCurrentLocation(): NaviRead<NaviPosition> = NaviRead.Unsupported
 }
 
 class PleosNavigationRepository(

@@ -22,6 +22,24 @@ class ProductionStationsTest {
         assertSame(StationResult.Unavailable, repo.findStations())
     }
 
+    @Test fun nearbyModeMeasuresOnlyTheNearestRowsAndJoinsTheirMetrics() = runTest {
+        val rows = (1..9).map { rawStation.copy(id = "s$it", name = "Station $it", providerDistanceMeters = (10 - it) * 100.0) }
+        val many = catalog.copy(stations = rows)
+        var measuredIds = emptyList<String>()
+        val metrics = StationRoadMetrics { request ->
+            measuredIds = request.catalog.stations.map { it.id }
+            VerifiedRoadMetricsSnapshot(request, 99, 110, request.catalog.stations.map { raw ->
+                VerifiedStationRoadMetric(raw.id, true, 1.0, null, 3, null, verifiedTarget.copy(stationId = raw.id))
+            })
+        }
+        val repo = createProductionStations(location, nav { RouteResult.Available(null) },
+            source { StationDiscoveryResult.Available(many) }, metrics, transform, StationFuel.GASOLINE,
+            epochSeconds = { 100 }, maxNearbyMeasured = 3)
+        val read = repo.readStations() as ProductionStationRead.Available
+        assertEquals(listOf("s9", "s8", "s7"), measuredIds)
+        assertEquals(listOf("s9", "s8", "s7"), read.stations.map { it.id })
+    }
+
     @Test fun validatedKatecTransformConvertsOnlyInsideKorea() = runTest {
         val seoul = ValidatedKatecTransform.toKatec(VehicleLocation(37.5027, 127.0364))!!
         assertEquals(CoordinateSystem.KATEC, seoul.system)

@@ -97,8 +97,10 @@ fun createProductionStations(
     epochSeconds: () -> Long = { System.currentTimeMillis() / 1000 },
     /** Read when [fuel] is null, e.g. from the vehicle's own INFO_FUEL_TYPE. Null result stays unverified. */
     fuelSource: (suspend () -> StationFuel?)? = null,
+    /** Without a route, only this many nearest catalog rows are road-measured (each costs a trip preview). */
+    maxNearbyMeasured: Int = 6,
 ): ProductionStationRepository = ProductionStationRepository(
-    location, navigation, discovery, roadMetrics, coordinateTransform, fuel, epochSeconds, fuelSource,
+    location, navigation, discovery, roadMetrics, coordinateTransform, fuel, epochSeconds, fuelSource, maxNearbyMeasured,
 )
 
 /** The sole production join from a raw source catalog into decision-engine candidates. */
@@ -111,7 +113,10 @@ class ProductionStationRepository internal constructor(
     private val fuel: StationFuel?,
     private val epochSeconds: () -> Long,
     private val fuelSource: (suspend () -> StationFuel?)? = null,
+    private val maxNearbyMeasured: Int = 6,
 ) : ContextualStationRepository {
+    init { require(maxNearbyMeasured > 0) }
+
     override suspend fun findStations(): StationResult = when (val read = readStations()) {
         is ProductionStationRead.Available -> StationResult.Available(read.stations)
         is ProductionStationRead.Unavailable -> StationResult.Unavailable
@@ -149,13 +154,16 @@ class ProductionStationRepository internal constructor(
                 ?: return fail(ProductionStationFailure.COORDINATE_TRANSFORM_UNVERIFIED)
             if (coordinates.system != CoordinateSystem.KATEC || !coordinates.isValid())
                 return fail(ProductionStationFailure.COORDINATE_TRANSFORM_UNVERIFIED)
-            val catalog = when (val read = discovery.discover(StationDiscoveryQuery(coordinates, 5000, verifiedFuel))) {
+            val discovered = when (val read = discovery.discover(StationDiscoveryQuery(coordinates, 5000, verifiedFuel))) {
                 is StationDiscoveryResult.Unavailable -> return fail(ProductionStationFailure.DISCOVERY_UNAVAILABLE, read.reason)
                 is StationDiscoveryResult.Available -> read.catalog.copy(stations = read.catalog.stations.toList())
             }
-            if (!fresh(catalog.fetchedAtEpochSeconds, catalog.expiresAtEpochSeconds, 300))
+            if (!fresh(discovered.fetchedAtEpochSeconds, discovered.expiresAtEpochSeconds, 300))
                 return fail(ProductionStationFailure.STALE_CATALOG)
-            if (!validCatalog(catalog, verifiedFuel)) return fail(ProductionStationFailure.INVALID_CATALOG)
+            if (!validCatalog(discovered, verifiedFuel)) return fail(ProductionStationFailure.INVALID_CATALOG)
+            // Provider distance only chooses which nearby rows to measure; it never becomes a road metric.
+            val catalog = if (route == null) discovered.copy(stations = discovered.stations
+                .sortedBy { it.providerDistanceMeters }.take(maxNearbyMeasured)) else discovered
             val request = RoadMetricsRequest(origin, route, catalog)
             val measured = roadMetrics.measure(request)
                 ?: return fail(ProductionStationFailure.ROAD_METRICS_UNAVAILABLE)

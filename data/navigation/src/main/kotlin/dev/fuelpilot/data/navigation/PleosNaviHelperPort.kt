@@ -1,6 +1,7 @@
 package dev.fuelpilot.data.navigation
 
 import ai.pleos.playground.navi.constants.NaviErrorCode
+import ai.pleos.playground.navi.constants.RoutePointType
 import ai.pleos.playground.navi.constants.WaypointCmdType
 import ai.pleos.playground.navi.constants.WaypointIndex
 import ai.pleos.playground.navi.data.CurrentLocationInfo
@@ -8,6 +9,8 @@ import ai.pleos.playground.navi.data.DestinationInfo
 import ai.pleos.playground.navi.data.RequestWaypointInfo
 import ai.pleos.playground.navi.data.RouteInfo
 import ai.pleos.playground.navi.data.RouteStateInfo
+import ai.pleos.playground.navi.data.TripInfo
+import ai.pleos.playground.navi.data.TripRequest
 import ai.pleos.playground.navi.data.WaypointChangedInfo
 import ai.pleos.playground.navi.data.WaypointInfo
 import ai.pleos.playground.navi.helper.NaviHelper
@@ -24,6 +27,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
+import kotlin.math.cos
+import kotlin.math.hypot
 
 class PleosNaviHelperPort(
     context: Context,
@@ -186,6 +191,67 @@ class PleosNaviHelperPort(
         }
     }
 
+    /**
+     * NaviHelper.requestTrip previews a trip from the navigation's position without changing the route
+     * (checked on PLEOS Connect v2.1: route state identical before and after). TripInfo carries no request
+     * ID and is broadcast to every NaviHelper listener, so only a result whose destination point matches
+     * this request is accepted.
+     */
+    @SuppressLint("MissingPermission")
+    override suspend fun measureTrip(latitude: Double, longitude: Double): NaviRead<NaviTrip> = operations.withLock {
+        if (!hasPermission(NAVI_ROUTE_PERMISSION)) return@withLock NaviRead.Unsupported
+        if (!latitude.isFinite() || latitude !in -90.0..90.0 || !longitude.isFinite() || longitude !in -180.0..180.0)
+            return@withLock NaviRead.Unavailable
+        runWithRetries<NaviRead<NaviTrip>>(
+            NaviRead.Unavailable, NaviRead.Unsupported, NaviRead.Unavailable,
+        ) { complete, _, _ ->
+            val listener = object : NaviHelperEventListener {
+                override fun onTripInfo(tripInfo: TripInfo) {
+                    val destination = tripInfo.summary?.routePoints?.firstOrNull { it.pointType == RoutePointType.DESTINATION }
+                        ?: return
+                    if (!sameTarget(destination.latitude, destination.longitude, latitude, longitude)) return
+                    complete(
+                        if (tripInfo.distance >= 0 && tripInfo.eta >= 0) NaviRead.Available(NaviTrip(tripInfo.distance, tripInfo.eta))
+                        else NaviRead.Unavailable
+                    )
+                }
+
+                override fun onError(errorCode: NaviErrorCode) = complete(NaviRead.Unavailable)
+            }
+            Session(listener) { it.requestTrip(TripRequest(latitude, longitude, "", "", "")) }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    override suspend fun readCurrentLocation(): NaviRead<NaviPosition> = operations.withLock {
+        if (!hasPermission(NAVI_ROUTE_PERMISSION)) return@withLock NaviRead.Unsupported
+        runWithRetries<NaviRead<NaviPosition>>(
+            NaviRead.Unavailable, NaviRead.Unsupported, NaviRead.Unavailable,
+        ) { complete, _, _ ->
+            val listener = object : NaviHelperEventListener {
+                override fun onCurrentLocationInfo(currentLocationInfo: CurrentLocationInfo) {
+                    val lat = currentLocationInfo.latitude
+                    val lon = currentLocationInfo.longitude
+                    // (0, 0) is the uninitialised value, not a position.
+                    complete(
+                        if (lat.isFinite() && lat in -90.0..90.0 && lon.isFinite() && lon in -180.0..180.0 && (lat != 0.0 || lon != 0.0))
+                            NaviRead.Available(NaviPosition(lat, lon))
+                        else NaviRead.Unavailable
+                    )
+                }
+
+                override fun onError(errorCode: NaviErrorCode) = complete(NaviRead.Unavailable)
+            }
+            Session(listener) { it.getCurrentLocationInfo() }
+        }
+    }
+
+    private fun sameTarget(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Boolean {
+        val dLat = (aLat - bLat) * 111_320.0
+        val dLon = (aLon - bLon) * 111_320.0 * cos(Math.toRadians(bLat))
+        return hypot(dLat, dLon) <= TRIP_TARGET_TOLERANCE_METERS
+    }
+
     private data class Session(
         val listener: NaviHelperEventListener,
         val onConnected: (NaviHelper) -> Unit,
@@ -300,5 +366,7 @@ class PleosNaviHelperPort(
         const val NAVI_SERVICE_PACKAGE = "ai.pleos.playground.service.navi"
         const val NAVI_ROUTE_PERMISSION = "pleos.car.permission.NAVI_ROUTE"
         const val NAVI_SEARCH_PERMISSION = "pleos.car.permission.NAVI_ROUTE_SEARCH"
+        /** The returned destination point may be snapped to a road; a station request never moves this far. */
+        const val TRIP_TARGET_TOLERANCE_METERS = 500.0
     }
 }

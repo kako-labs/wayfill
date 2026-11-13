@@ -53,12 +53,15 @@ class FuelPilotApplication : Application() {
         val energy = vehicleSource?.let {
             AaosRangeEnergyRepository(it, SystemClock::elapsedRealtimeNanos)
         } ?: UnsupportedEnergyRepository
-        val location = if (automotive) {
+        val naviPort = if (automotive) PleosNaviHelperPort(this) else null
+        val fusedLocation = if (automotive) {
             PleosFusedLocationRepository(PleosFusedLocationPort(this))
         } else UnsupportedLocationRepository
-        val navigation = if (automotive) {
+        // The navigation's own position is the origin its trip previews use; FusedLocation only when it has none.
+        val location = naviPort?.let { NavigationLocationRepository(it, fallback = fusedLocation) } ?: fusedLocation
+        val navigation = if (naviPort != null) {
             PleosNavigationRepository(
-                PleosNaviHelperPort(this),
+                naviPort,
                 hasRoutePermission = { hasPermission(NAVI_ROUTE_PERMISSION) },
                 hasRouteSearchPermission = { hasPermission(NAVI_ROUTE_SEARCH_PERMISSION) },
             )
@@ -68,7 +71,8 @@ class FuelPilotApplication : Application() {
             ?.let { runCatching { GatewayConfig(it) }.getOrNull() }
         // The vehicle's own INFO_FUEL_TYPE selects the provider product; no gasoline default is assumed.
         val fuelProvider = vehicleSource?.let(::VehicleStationFuelProvider)
-        val stations = createProductionStations(location, navigation, GatewayStationDiscovery(config),
+        val stations = createProductionStations(location, navigation, GridCachingStationDiscovery(GatewayStationDiscovery(config)),
+            roadMetrics = naviPort?.let(::NavigationTripRoadMetrics) ?: UnsupportedStationRoadMetrics,
             coordinateTransform = ValidatedKatecTransform,
             fuelSource = fuelProvider?.let { provider -> suspend { provider.read() } })
         AppDependencies(PreferencesAssistStateStore(assistDataStore),
