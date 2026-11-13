@@ -151,14 +151,15 @@ class ProductionStationRepository internal constructor(
             ProductionStationRead.Unavailable(reason, discoveryReason)
         try {
             val verifiedFuel = fuel ?: fuelSource?.invoke() ?: return fail(ProductionStationFailure.FUEL_UNVERIFIED)
-            val origin = (location.readLocation() as? LocationResult.Available)?.location
+            // The coordinator has just read this context; reading it again here would only spend navigation calls
+            // (about a second each on PLEOS, serialized) in a refresh cycle the app cancels after 5 s. Whether it
+            // still holds is checked once, after the slow work, by stillSameTrip.
+            val origin = expected?.origin ?: (location.readLocation() as? LocationResult.Available)?.location
                 ?: return fail(ProductionStationFailure.LOCATION_UNAVAILABLE)
             if (!validLocation(origin)) return fail(ProductionStationFailure.LOCATION_UNAVAILABLE)
-            val routeRead = navigation.readRoute() as? RouteResult.Available
+            val routeRead = expected?.let { RouteResult.Available(it.route) } ?: navigation.readRoute() as? RouteResult.Available
                 ?: return fail(ProductionStationFailure.ROUTE_UNAVAILABLE)
             val route = routeRead.route
-            if (expected != null && !sameTrip(expected.origin, expected.route, origin, route))
-                return fail(ProductionStationFailure.CONTEXT_CHANGED)
             if (route != null && (route.id.isBlank() || !validDistance(route.remainingDistanceKm)))
                 return fail(ProductionStationFailure.ROUTE_UNAVAILABLE)
             if (route != null && routeCorridor != null)
