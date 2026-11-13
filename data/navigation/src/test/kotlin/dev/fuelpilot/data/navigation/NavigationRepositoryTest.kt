@@ -159,6 +159,16 @@ class NavigationRepositoryTest {
             .matches(coordinateOnly))
     }
 
+    @Test fun unreportedWaypointCoordinatesFallBackToTheNameAlone() {
+        // PLEOS returned WaypointInfo(name=주유소티파니블루, latitude=0.0, longitude=0.0, ...) for a real waypoint.
+        val station = target(name = "주유소티파니블루")
+        assertTrue(NavigationObservedTarget(0.0, 0.0, "주유소티파니블루", "", null, "").matches(station))
+        assertTrue(!NavigationObservedTarget(0.0, 0.0, "다른주유소", "", null, "").matches(station))
+        assertTrue(!NavigationObservedTarget(0.0, 0.0, "", "", null, "").matches(station))
+        // Reported coordinates still have to agree; a matching name cannot rescue a different place.
+        assertTrue(!NavigationObservedTarget(37.6, 127.0, "주유소티파니블루", "", null, "").matches(station))
+    }
+
     private class FakePort(
         private val route: NaviRead<NaviRouteSnapshot?>,
         private val command: NaviCommandStatus,

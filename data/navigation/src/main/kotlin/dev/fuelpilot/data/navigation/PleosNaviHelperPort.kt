@@ -9,6 +9,7 @@ import ai.pleos.playground.navi.data.CurrentLocationInfo
 import ai.pleos.playground.navi.data.DestinationInfo
 import ai.pleos.playground.navi.data.RequestWaypointInfo
 import ai.pleos.playground.navi.data.RouteInfo
+import ai.pleos.playground.navi.data.RouteStartInfo
 import ai.pleos.playground.navi.data.RouteStateInfo
 import ai.pleos.playground.navi.data.TripInfo
 import ai.pleos.playground.navi.data.TripRequest
@@ -36,11 +37,17 @@ class PleosNaviHelperPort(
     private val operationTimeoutMs: Long = 4_000L,
     private val maxConnectionAttempts: Int = 2,
     private val retryDelayMs: Long = 150L,
+    /**
+     * Route changes complete only when the navigation starts guiding: about 6 s on the PLEOS emulator for both
+     * a new destination and an added waypoint. They are sent once, never retried, because a repeated request
+     * cancels the one in progress (a new destination) or adds a second stop (a waypoint).
+     */
+    private val routeCommandTimeoutMs: Long = 12_000L,
 ) : NaviHelperPort {
     private val appContext = context.applicationContext
     private val operations = Mutex()
 
-    init { require(operationTimeoutMs > 0 && maxConnectionAttempts > 0 && retryDelayMs >= 0) }
+    init { require(operationTimeoutMs > 0 && maxConnectionAttempts > 0 && retryDelayMs >= 0 && routeCommandTimeoutMs > 0) }
 
     override fun isSupported(): Boolean {
         if (!appContext.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) return false
@@ -132,12 +139,17 @@ class PleosNaviHelperPort(
             NaviCommandStatus.TIMED_OUT,
             NaviCommandStatus.UNSUPPORTED,
             NaviCommandStatus.FAILED,
+            attempts = 1,
+            timeoutMs = routeCommandTimeoutMs,
         ) { complete, unsupported, failed ->
-            val requestSubmitted = AtomicBoolean(false)
+            // The navigation pushes the (still old) waypoint list while it reroutes; only the list read after
+            // it confirms this ADD at this index can settle the command.
+            val waypointAdded = AtomicBoolean(false)
             lateinit var helper: NaviHelper
             val listener = object : NaviHelperEventListener {
                 override fun onWaypointChanged(waypointChangedInfo: WaypointChangedInfo) {
                     if (waypointChangedInfo.cmdType == WaypointCmdType.ADD && waypointChangedInfo.index == waypointIndex) {
+                        waypointAdded.set(true)
                         try { helper.getWaypointInfo() }
                         catch (_: SecurityException) { unsupported() }
                         catch (_: Exception) { failed() }
@@ -145,7 +157,7 @@ class PleosNaviHelperPort(
                 }
 
                 override fun onWayPointInfo(waypointInfo: List<WaypointInfo>) {
-                    if (requestSubmitted.get()) complete(
+                    if (waypointAdded.get()) complete(
                         if (waypointInfo.getOrNull(index)?.matches(target) == true) NaviCommandStatus.SUCCEEDED
                         else NaviCommandStatus.FAILED
                     )
@@ -155,7 +167,6 @@ class PleosNaviHelperPort(
             }
             Session(listener) { connected ->
                 helper = connected
-                requestSubmitted.set(true)
                 helper.addWaypoint(target.toWaypoint(waypointIndex))
             }
         }
@@ -168,16 +179,22 @@ class PleosNaviHelperPort(
             NaviCommandStatus.TIMED_OUT,
             NaviCommandStatus.UNSUPPORTED,
             NaviCommandStatus.FAILED,
+            attempts = 1,
+            timeoutMs = routeCommandTimeoutMs,
         ) { complete, unsupported, failed ->
             val routingCompleted = AtomicBoolean(false)
             lateinit var helper: NaviHelper
+            fun confirmDestination() {
+                if (!routingCompleted.compareAndSet(false, true)) return
+                try { helper.getDestinationInfo() }
+                catch (_: SecurityException) { unsupported() }
+                catch (_: Exception) { failed() }
+            }
             val listener = object : NaviHelperEventListener {
-                override fun onRoutingCompleted() {
-                    routingCompleted.set(true)
-                    try { helper.getDestinationInfo() }
-                    catch (_: SecurityException) { unsupported() }
-                    catch (_: Exception) { failed() }
-                }
+                override fun onRoutingCompleted() = confirmDestination()
+
+                // PLEOS signals a new destination only by starting guidance (no onRoutingCompleted observed).
+                override fun onRouteStarted(routeStartInfo: RouteStartInfo) = confirmDestination()
 
                 override fun onDestinationInfo(destinationInfo: DestinationInfo) {
                     if (routingCompleted.get()) complete(
@@ -272,22 +289,25 @@ class PleosNaviHelperPort(
         timeoutResult: T,
         unsupportedResult: T,
         failureResult: T,
+        attempts: Int = maxConnectionAttempts,
+        timeoutMs: Long = operationTimeoutMs,
         create: ((T) -> Unit, () -> Unit, () -> Unit) -> Session,
     ): T {
-        repeat(maxConnectionAttempts) { attempt ->
-            when (val result = runSession(create)) {
+        repeat(attempts) { attempt ->
+            when (val result = runSession(timeoutMs, create)) {
                 is SessionAttempt.Completed -> return result.value
                 SessionAttempt.Unsupported -> return unsupportedResult
                 SessionAttempt.Failed -> return failureResult
-                SessionAttempt.TimedOut -> if (attempt + 1 < maxConnectionAttempts) delay(retryDelayMs)
+                SessionAttempt.TimedOut -> if (attempt + 1 < attempts) delay(retryDelayMs)
             }
         }
         return timeoutResult
     }
 
     private suspend fun <T> runSession(
+        timeoutMs: Long,
         create: ((T) -> Unit, () -> Unit, () -> Unit) -> Session,
-    ): SessionAttempt<T> = withTimeoutOrNull(operationTimeoutMs) {
+    ): SessionAttempt<T> = withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine { continuation ->
                 val finished = AtomicBoolean(false)
                 val helper = try { NaviHelper(appContext) } catch (_: Exception) {

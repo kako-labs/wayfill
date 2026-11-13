@@ -48,6 +48,14 @@ data class NavigationObservedTarget(
     val poiProvider: String?,
 )
 
+/**
+ * PLEOS reports a waypoint's coordinates as 0.0/0.0 (seen on the PLEOS emulator, NaviHelper service 3.0.4,
+ * 2026-11-13) while its name, address and remaining distance are real. Exactly 0/0 — far outside any road
+ * this app routes to — is therefore read as "not reported", and the name alone must then match.
+ */
+internal val NavigationObservedTarget.coordinatesReported: Boolean
+    get() = !(latitude == 0.0 && longitude == 0.0)
+
 internal fun NavigationObservedTarget.matches(target: NavigationTarget): Boolean {
     val expectedPoiId = target.poiId?.takeIf(String::isNotBlank)
     val expectedProvider = target.poiProvider?.takeIf(String::isNotBlank)
@@ -59,6 +67,7 @@ internal fun NavigationObservedTarget.matches(target: NavigationTarget): Boolean
         return true
     }
     if (expectedProvider != null && !poiProvider.isNullOrBlank() && poiProvider != expectedProvider) return false
+    if (!coordinatesReported) return compatibleName(name, target.name)
     if (!latitude.isFinite() || !longitude.isFinite()) return false
     return distanceMeters(latitude, longitude, target.latitude, target.longitude) <= COORDINATE_FALLBACK_METERS &&
         compatibleName(name, target.name)

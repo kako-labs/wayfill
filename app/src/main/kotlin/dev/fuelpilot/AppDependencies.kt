@@ -31,7 +31,8 @@ class AppDependencies(
     val vehicleEvents: VehicleEvents = UnsupportedVehicleEvents,
     val recommendationSpeech: RecommendationSpeechPort = UnsupportedRecommendationSpeechPort,
     val refreshIntervalMs: Long = 5000L,
-    val navigationTimeoutMs: Long = 10_000L,
+    /** Above the navigation port's own 12 s route-command wait (guidance starts about 6 s after a request). */
+    val navigationTimeoutMs: Long = 15_000L,
     val reduceMotion: Flow<Boolean> = emptyFlow(),
     val readTimeoutMs: Long = 5000L,
     val refreshRequests: Flow<Unit> = emptyFlow(),
