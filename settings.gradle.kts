@@ -8,7 +8,11 @@ dependencyResolutionManagement {
         mavenCentral()
         maven {
             url = uri("https://nexus-playground.pleos.ai/repository/maven-releases/")
-            content { includeGroup("ai.pleos.playground") }
+            content {
+                includeGroup("ai.pleos.playground")
+                // TextToSpeech depends on ai.pleos.playground.security:universal-access.
+                includeGroup("ai.pleos.playground.security")
+            }
         }
     }
 }

@@ -78,6 +78,7 @@ class FuelPilotApplication : Application() {
         AppDependencies(PreferencesAssistStateStore(assistDataStore),
             energy = energy, location = location, navigation = navigation, stations = stations,
             vehicleEvents = vehicleSource?.let(::AaosVehicleEvents) ?: UnsupportedVehicleEvents,
+            recommendationSpeech = if (automotive) PleosTtsSpeechPort(this) else UnsupportedRecommendationSpeechPort,
             reduceMotion = observeReducedMotion())
     }
 

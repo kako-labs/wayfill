@@ -20,7 +20,7 @@ android {
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
-    lint { abortOnError = true; warningsAsErrors = true; disable += setOf("OldTargetApi", "AndroidGradlePluginVersion", "GradleDependency") }
+    lint { abortOnError = true; warningsAsErrors = true; disable += setOf("OldTargetApi", "AndroidGradlePluginVersion", "GradleDependency"); lintConfig = file("lint.xml") }
 }
 dependencies {
     implementation(project(":core:model")); implementation(project(":data:energy")); implementation(project(":data:location")); implementation(project(":data:poi")); implementation(project(":data:navigation")); implementation(project(":feature:assist"))
@@ -35,4 +35,5 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.datastore.preferences)
     implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.pleos.tts)
 }
