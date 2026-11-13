@@ -47,6 +47,13 @@ fun interface VehicleFuelTypeSource {
     suspend fun readFuelTypes(): VehicleSignal<Set<VehicleFuelType>>
 }
 
+/** Fuel in the tank (AAOS FUEL_LEVEL) and the tank size (INFO_FUEL_CAPACITY), both in millilitres. */
+data class FuelLevelSample(val levelMl: Float, val capacityMl: Float)
+
+fun interface FuelLevelSource {
+    suspend fun readFuelLevel(): VehicleSignal<FuelLevelSample>
+}
+
 class AaosRangeEnergyRepository(
     private val source: VehiclePropertySource,
     private val elapsedRealtimeNanos: () -> Long,

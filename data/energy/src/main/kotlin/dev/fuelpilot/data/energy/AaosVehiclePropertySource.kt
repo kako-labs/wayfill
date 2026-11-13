@@ -30,7 +30,7 @@ class AaosVehiclePropertySource(
     private val maxConnectionAttempts: Int = 2,
     private val retryDelayMs: Long = 150L,
     private val safetyPollMs: Long = 1_000L,
-) : VehiclePropertySource, VehicleFuelTypeSource {
+) : VehiclePropertySource, VehicleFuelTypeSource, FuelLevelSource {
     private val appContext = context.applicationContext
 
     init {
@@ -82,6 +82,38 @@ class AaosVehiclePropertySource(
             val raw = (value.value as? Array<*>)?.filterIsInstance<Int>() ?: return@withCar VehicleSignal.Unavailable
             val types = raw.mapNotNull { mapFuelType(it) }.toSet()
             if (types.isEmpty()) VehicleSignal.Unavailable else VehicleSignal.Available(types, value.timestamp)
+        }
+    }
+
+    /** FUEL_LEVEL needs CAR_ENERGY, INFO_FUEL_CAPACITY needs CAR_INFO. An EV usually exposes neither. */
+    override suspend fun readFuelLevel(): VehicleSignal<FuelLevelSample> {
+        if (!isAutomotive() || !hasPermission(Car.PERMISSION_ENERGY) || !hasPermission(Car.PERMISSION_CAR_INFO)) {
+            return VehicleSignal.Unsupported
+        }
+        return withCar { car ->
+            val manager = car.getCarManager(Car.PROPERTY_SERVICE) as? CarPropertyManager
+                ?: return@withCar VehicleSignal.Unsupported
+            fun read(id: Int): VehicleSignal<Float> {
+                val config = try { manager.getCarPropertyConfig(id) }
+                    catch (_: SecurityException) { return VehicleSignal.Unsupported }
+                    catch (_: Exception) { return VehicleSignal.Unavailable }
+                    ?: return VehicleSignal.Unsupported
+                if (config.propertyType != Float::class.javaObjectType) return VehicleSignal.Unsupported
+                val value = try { manager.getProperty(Float::class.javaObjectType, id, GLOBAL_AREA) }
+                    catch (_: SecurityException) { return VehicleSignal.Unsupported }
+                    catch (_: Exception) { return VehicleSignal.Unavailable }
+                return if (value.isAvailable()) VehicleSignal.Available(value.value, value.timestamp) else VehicleSignal.Unavailable
+            }
+            val level = read(VehiclePropertyIds.FUEL_LEVEL)
+            val capacity = read(VehiclePropertyIds.INFO_FUEL_CAPACITY)
+            if (level is VehicleSignal.Available && capacity is VehicleSignal.Available) {
+                val sample = FuelLevelSample(level.value, capacity.value)
+                if (sample.capacityMl.isFinite() && sample.capacityMl > 0f && sample.levelMl.isFinite() &&
+                    sample.levelMl >= 0f && sample.levelMl <= sample.capacityMl * 1.05f
+                ) VehicleSignal.Available(sample, level.timestampNanos) else VehicleSignal.Unavailable
+            } else if (level == VehicleSignal.Unsupported || capacity == VehicleSignal.Unsupported) {
+                VehicleSignal.Unsupported
+            } else VehicleSignal.Unavailable
         }
     }
 

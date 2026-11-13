@@ -77,7 +77,9 @@ class FuelPilotApplication : Application() {
             fuelSource = fuelProvider?.let { provider -> suspend { provider.read() } })
         AppDependencies(PreferencesAssistStateStore(assistDataStore),
             energy = energy, location = location, navigation = navigation, stations = stations,
-            vehicleEvents = vehicleSource?.let(::AaosVehicleEvents) ?: UnsupportedVehicleEvents,
+            // Refuel detection stays off until the tank-level rule is validated on a real combustion vehicle.
+            vehicleEvents = vehicleSource?.let { AaosVehicleEvents(it, fuelLevel = it, refuelDetectionEnabled = false) }
+                ?: UnsupportedVehicleEvents,
             recommendationSpeech = if (automotive) PleosTtsSpeechPort(this) else UnsupportedRecommendationSpeechPort,
             reduceMotion = observeReducedMotion())
     }
