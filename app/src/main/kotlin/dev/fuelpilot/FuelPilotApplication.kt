@@ -20,12 +20,14 @@ import dev.fuelpilot.data.navigation.PleosNaviHelperPort
 import dev.fuelpilot.data.navigation.PleosNavigationRepository
 import dev.fuelpilot.data.navigation.UnsupportedNavigationRepository
 import dev.fuelpilot.data.poi.gateway.GatewayConfig
+import dev.fuelpilot.data.poi.gateway.GatewayRouteCorridor
 import dev.fuelpilot.data.poi.gateway.GatewayStationDiscovery
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -53,12 +55,15 @@ class FuelPilotApplication : Application() {
         val energy = vehicleSource?.let {
             AaosRangeEnergyRepository(it, SystemClock::elapsedRealtimeNanos)
         } ?: UnsupportedEnergyRepository
-        val location = if (automotive) {
+        val naviPort = if (automotive) PleosNaviHelperPort(this) else null
+        val fusedLocation = if (automotive) {
             PleosFusedLocationRepository(PleosFusedLocationPort(this))
         } else UnsupportedLocationRepository
-        val navigation = if (automotive) {
+        // The navigation's own position is the origin its trip previews use; FusedLocation only when it has none.
+        val location = naviPort?.let { NavigationLocationRepository(it, fallback = fusedLocation) } ?: fusedLocation
+        val navigation = if (naviPort != null) {
             PleosNavigationRepository(
-                PleosNaviHelperPort(this),
+                naviPort,
                 hasRoutePermission = { hasPermission(NAVI_ROUTE_PERMISSION) },
                 hasRouteSearchPermission = { hasPermission(NAVI_ROUTE_SEARCH_PERMISSION) },
             )
@@ -66,11 +71,27 @@ class FuelPilotApplication : Application() {
         // Public origin only. Missing or invalid configuration never falls back to fixtures.
         val config = BuildConfig.STATION_GATEWAY_ORIGIN.takeIf { it.isNotBlank() }
             ?.let { runCatching { GatewayConfig(it) }.getOrNull() }
-        val stations = createProductionStations(location, navigation, GatewayStationDiscovery(config))
-        AppDependencies(PreferencesAssistStateStore(assistDataStore),
+        val store = PreferencesAssistStateStore(assistDataStore)
+        // The vehicle's own INFO_FUEL_TYPE selects the provider product, else the driver's choice in settings;
+        // no gasoline default is assumed.
+        val fuelProvider = vehicleSource?.let(::VehicleStationFuelProvider)
+        val stationFuel = StationFuelResolver(fuelProvider?.let { provider -> suspend { provider.read() } }) {
+            store.observeFuelPreference().first()
+        }
+        val stations = createProductionStations(location, navigation, GridCachingStationDiscovery(GatewayStationDiscovery(config)),
+            roadMetrics = naviPort?.let(::NavigationTripRoadMetrics) ?: UnsupportedStationRoadMetrics,
+            coordinateTransform = ValidatedKatecTransform,
+            fuelSource = stationFuel::read,
+            // With an active route the gateway's routed corridor supplies stations and road metrics.
+            routeCorridor = GatewayRouteCorridor(config))
+        AppDependencies(store,
             energy = energy, location = location, navigation = navigation, stations = stations,
-            vehicleEvents = vehicleSource?.let(::AaosVehicleEvents) ?: UnsupportedVehicleEvents,
-            reduceMotion = observeReducedMotion())
+            // Refuel detection stays off until the tank-level rule is validated on a real combustion vehicle.
+            vehicleEvents = vehicleSource?.let { AaosVehicleEvents(it, fuelLevel = it, refuelDetectionEnabled = false) }
+                ?: UnsupportedVehicleEvents,
+            recommendationSpeech = if (automotive) PleosTtsSpeechPort(this) else UnsupportedRecommendationSpeechPort,
+            reduceMotion = observeReducedMotion(),
+            stationFuel = stationFuel::read)
     }
 
     private fun observeReducedMotion() = callbackFlow {

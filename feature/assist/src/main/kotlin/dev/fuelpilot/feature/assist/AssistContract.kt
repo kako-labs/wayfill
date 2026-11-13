@@ -4,6 +4,7 @@ import dev.fuelpilot.data.navigation.NavigationMode
 import dev.fuelpilot.data.navigation.NavigationTarget
 import dev.fuelpilot.data.navigation.WaypointRequest
 import dev.fuelpilot.data.navigation.WaypointResult
+import dev.fuelpilot.data.poi.gateway.StationFuel
 import dev.fuelpilot.ui.FuelRouteUi
 import dev.fuelpilot.ui.FuelUiEvent
 import dev.fuelpilot.ui.FuelUiState
@@ -32,6 +33,8 @@ sealed interface AssistIntent {
     data class CelebrationFinished(val id: String) : AssistIntent
     data class CharacterChanged(val enabled: Boolean) : AssistIntent
     data class ReserveChanged(val km: Int) : AssistIntent
+    /** Parked only, like the reserve: it changes which stations can be recommended. */
+    data class FuelChanged(val fuel: StationFuel) : AssistIntent
     data object PauseMonitoring : AssistIntent
     data class ReduceMotionChanged(val enabled: Boolean) : AssistIntent
     data object Continue : AssistIntent
@@ -191,6 +194,13 @@ fun reduceAssist(
                 presentation = unavailablePresentation(), requestedScreen = state.requestedScreen,
             )
         }
+        is AssistIntent.FuelChanged -> if (state.ui.motion == Motion.Parked && intent.fuel in selectableFuels &&
+            intent.fuel != state.persisted.fuelPreference) {
+            next = state.clearTransient().copy(
+                persisted = state.persisted.clearExposure().copy(fuelPreference = intent.fuel),
+                presentation = unavailablePresentation(), requestedScreen = state.requestedScreen,
+            )
+        }
         is AssistIntent.CharacterChanged -> if (state.ui.motion == Motion.Parked) next = state.copy(
             persisted = state.persisted.copy(characterEnabled = intent.enabled),
             ui = reduceFuelUi(state.ui, FuelUiEvent.CharacterChanged(intent.enabled), monotonicClockMs),
@@ -262,15 +272,10 @@ private fun resolveScreen(state: AssistViewState): AssistViewState {
             celebration = state.ui.celebration.takeIf { state.ui.motion == Motion.Parked },
             seenIds = stored.processedRefuels.keys,
             pendingStation = state.pending?.stationId,
-            routeStation = (result as? WaypointResult.Succeeded)?.stationId,
+            routeStation = (result as? WaypointResult.Succeeded)?.stationId ?: presentation.waypointStationId,
             error = result?.errorMessage(),
             detailsAvailable = state.ui.motion == Motion.Parked && recommendation,
-            statusMessage = when (presentation.availability) {
-                AssistAvailability.READY -> null
-                AssistAvailability.STALE -> "최신 차량과 경로 정보를 확인 중이에요."
-                AssistAvailability.UNAVAILABLE -> "차량과 경로 정보를 확인할 수 없어요."
-                AssistAvailability.UNSUPPORTED -> "이 환경에서는 주유 안내 정보를 지원하지 않아요."
-            },
+            statusMessage = presentation.statusMessage(),
         ),
     )
 }

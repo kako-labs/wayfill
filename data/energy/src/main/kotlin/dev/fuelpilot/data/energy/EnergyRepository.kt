@@ -40,6 +40,20 @@ interface VehiclePropertySource {
     fun observeSafety(): Flow<VehicleSignal<VehicleSafetySnapshot>>
 }
 
+/** The vehicle's own fuel types (AAOS INFO_FUEL_TYPE). A plug-in hybrid reports more than one. */
+enum class VehicleFuelType { UNLEADED, LEADED, DIESEL, BIODIESEL, E85, LPG, CNG, LNG, ELECTRIC, HYDROGEN, OTHER }
+
+fun interface VehicleFuelTypeSource {
+    suspend fun readFuelTypes(): VehicleSignal<Set<VehicleFuelType>>
+}
+
+/** Fuel in the tank (AAOS FUEL_LEVEL) and the tank size (INFO_FUEL_CAPACITY), both in millilitres. */
+data class FuelLevelSample(val levelMl: Float, val capacityMl: Float)
+
+fun interface FuelLevelSource {
+    suspend fun readFuelLevel(): VehicleSignal<FuelLevelSample>
+}
+
 class AaosRangeEnergyRepository(
     private val source: VehiclePropertySource,
     private val elapsedRealtimeNanos: () -> Long,

@@ -1,5 +1,6 @@
 package dev.fuelpilot
 
+import dev.fuelpilot.data.energy.FuelLevelSource
 import dev.fuelpilot.data.energy.GearSelection
 import dev.fuelpilot.data.energy.UxRestrictionState
 import dev.fuelpilot.data.energy.VehiclePropertySource
@@ -14,7 +15,12 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 
-class AaosVehicleEvents(source: VehiclePropertySource) : VehicleEvents {
+class AaosVehicleEvents(
+    source: VehiclePropertySource,
+    fuelLevel: FuelLevelSource? = null,
+    /** Off until RefuelDetector is validated on a real combustion vehicle. */
+    refuelDetectionEnabled: Boolean = false,
+) : VehicleEvents {
     override val motion: Flow<Motion> = source.observeSafety()
         .map(::mapMotion)
         .onStart { emit(Motion.Unknown) }
@@ -23,8 +29,11 @@ class AaosVehicleEvents(source: VehiclePropertySource) : VehicleEvents {
             emit(Motion.Unknown)
         }
 
-    // Fuel percent/economy and range changes are not a persisted, refuel-specific proof.
-    override val refuels: Flow<RefuelEvent> = emptyFlow()
+    // Range changes are never refuel proof. The tank-level candidate runs only when explicitly enabled.
+    override val refuels: Flow<RefuelEvent> =
+        if (refuelDetectionEnabled && fuelLevel != null) refuelEvents(motion, fuelLevel)
+            .catch { failure -> if (failure is CancellationException) throw failure }
+        else emptyFlow()
 }
 
 internal fun mapMotion(read: VehicleSignal<VehicleSafetySnapshot>): Motion = when (read) {

@@ -22,6 +22,42 @@ class ProductionStationsTest {
         assertSame(StationResult.Unavailable, repo.findStations())
     }
 
+    @Test fun nearbyModeMeasuresOnlyTheNearestRowsAndJoinsTheirMetrics() = runTest {
+        val rows = (1..9).map { rawStation.copy(id = "s$it", name = "Station $it", providerDistanceMeters = (10 - it) * 100.0) }
+        val many = catalog.copy(stations = rows)
+        var measuredIds = emptyList<String>()
+        val metrics = StationRoadMetrics { request ->
+            measuredIds = request.catalog.stations.map { it.id }
+            VerifiedRoadMetricsSnapshot(request, 99, 110, request.catalog.stations.map { raw ->
+                VerifiedStationRoadMetric(raw.id, true, 1.0, null, 3, null, verifiedTarget.copy(stationId = raw.id))
+            })
+        }
+        val repo = createProductionStations(location, nav { RouteResult.Available(null) },
+            source { StationDiscoveryResult.Available(many) }, metrics, transform, StationFuel.GASOLINE,
+            epochSeconds = { 100 }, maxNearbyMeasured = 3)
+        val read = repo.readStations() as ProductionStationRead.Available
+        assertEquals(listOf("s9", "s8", "s7"), measuredIds)
+        assertEquals(listOf("s9", "s8", "s7"), read.stations.map { it.id })
+    }
+
+    @Test fun validatedKatecTransformConvertsOnlyInsideKorea() = runTest {
+        val seoul = ValidatedKatecTransform.toKatec(VehicleLocation(37.5027, 127.0364))!!
+        assertEquals(CoordinateSystem.KATEC, seoul.system)
+        assertEquals(314996.879, seoul.x, 0.01)
+        assertEquals(544938.297, seoul.y, 0.01)
+        assertNull(ValidatedKatecTransform.toKatec(VehicleLocation(39.237255, -123.150032)))
+        assertNull(ValidatedKatecTransform.toKatec(VehicleLocation(Double.NaN, 127.0)))
+    }
+
+    @Test fun vehicleFuelSourceSuppliesTheProductWhenNoFixedFuelIsGiven() = runTest {
+        val unknown = createProductionStations(location, navigation, source { error("Fuel must be verified first") },
+            fuelSource = { null })
+        assertEquals(ProductionStationFailure.FUEL_UNVERIFIED, failure(unknown.readStations()))
+        val known = createProductionStations(location, navigation, source { error("Transform must be verified first") },
+            fuelSource = { StationFuel.GASOLINE }, epochSeconds = { 100 })
+        assertEquals(ProductionStationFailure.COORDINATE_TRANSFORM_UNVERIFIED, failure(known.readStations()))
+    }
+
     @Test fun rawCatalogAloneCannotProduceCandidatesAndTransformIsNeverGuessed() = runTest {
         var discoveries = 0
         val discovery = source { discoveries++; StationDiscoveryResult.Available(catalog) }
@@ -131,6 +167,86 @@ class ProductionStationsTest {
         assertTrue((repository(metrics = unreachable).readStations() as ProductionStationRead.Available).stations.isEmpty())
     }
 
+    @Test fun routeModeUsesTheRoutedCorridorInsteadOfANearbyCatalog() = runTest {
+        var asked: RouteCorridorQuery? = null
+        val beyondNavigationEnd = corridorStation.copy(id = "far", alongRouteMeters = 100_500.0, roadDistanceMeters = 100_600.0)
+        val corridor = RouteCorridorSource { query ->
+            asked = query
+            RouteCorridorResult.Available(corridorSnapshot.copy(stations = listOf(corridorStation, beyondNavigationEnd)))
+        }
+        val repo = corridorRepository(corridor)
+        val read = repo.readStationsFor(origin, destinationRoute) as ProductionStationRead.Available
+        assertEquals(RouteCorridorQuery(37.0, 127.0, 37.4979, 127.0276, StationFuel.GASOLINE, 100_000.0), asked)
+        val candidate = read.stations.single()
+        assertEquals("c1", candidate.id)
+        assertEquals(12.4, candidate.distanceFromCurrentKm, 1e-9)
+        assertEquals(11.9, candidate.distanceAlongRouteKm!!, 1e-9)
+        assertEquals(11, candidate.etaMinutes)
+        assertEquals(4, candidate.detourMinutes)
+        assertTrue(candidate.fuelCompatible)
+        assertEquals(NavigationTargetProvenance.VERIFIED_ROAD_METRICS_WGS84, candidate.navigationTarget!!.provenance)
+        assertEquals(37.45, candidate.navigationTarget!!.latitude, 0.0)
+    }
+
+    @Test fun routeCorridorFailsClosedWithoutDestinationCoverageAgreementOrFreshness() = runTest {
+        fun corridorOf(snapshot: RouteCorridorSnapshot) = RouteCorridorSource { RouteCorridorResult.Available(snapshot) }
+        val good = corridorOf(corridorSnapshot)
+        assertEquals(ProductionStationFailure.ROAD_METRICS_UNAVAILABLE,
+            failure(corridorRepository(good, nav { RouteResult.Available(route) }).readStations()))
+        assertEquals(ProductionStationFailure.ROUTE_COVERAGE_UNVERIFIED,
+            failure(corridorRepository(corridorOf(corridorSnapshot.copy(coverageVerified = false))).readStations()))
+        // The routed path must agree with the navigation's own remaining distance.
+        assertEquals(ProductionStationFailure.ROUTE_COVERAGE_UNVERIFIED,
+            failure(corridorRepository(corridorOf(corridorSnapshot.copy(remainingDistanceMeters = 130_000.0))).readStations()))
+        assertEquals(ProductionStationFailure.STALE_ROAD_METRICS,
+            failure(corridorRepository(corridorOf(corridorSnapshot.copy(expiresAtEpochSeconds = 100))).readStations()))
+        assertEquals(ProductionStationFailure.INVALID_ROAD_METRICS, failure(corridorRepository(corridorOf(
+            corridorSnapshot.copy(stations = listOf(corridorStation.copy(fuel = StationFuel.DIESEL))))).readStations()))
+        val quota = ProductionStationRead.Unavailable(ProductionStationFailure.DISCOVERY_UNAVAILABLE, DiscoveryFailure.QUOTA_EXHAUSTED)
+        assertEquals(quota, corridorRepository(RouteCorridorSource {
+            RouteCorridorResult.Unavailable(CorridorFailure.QUOTA_EXHAUSTED) }).readStations())
+    }
+
+    @Test fun routeCorridorResultForAnOldOriginIsDropped() = runTest {
+        var reads = 0
+        val moving = object : LocationRepository {
+            override suspend fun readLocation() = LocationResult.Available(if (reads++ == 0) origin else origin.copy(latitude = 37.01))
+        }
+        val repo = corridorRepository(RouteCorridorSource { RouteCorridorResult.Available(corridorSnapshot) }, loc = moving)
+        assertEquals(ProductionStationFailure.CONTEXT_CHANGED, failure(repo.readStations()))
+    }
+
+    @Test fun aMovingVehicleKeepsItsAnswerWithinTheTripDrift() = runTest {
+        // About 110 m further and the navigation's rounded remaining distance one step down: same trip.
+        var reads = 0
+        val moving = object : LocationRepository {
+            override suspend fun readLocation() = LocationResult.Available(if (reads++ == 0) origin else origin.copy(latitude = 37.001))
+        }
+        var navReads = 0
+        val navigating = nav { RouteResult.Available(if (navReads++ == 0) destinationRoute else destinationRoute.copy(remainingDistanceKm = 99.0)) }
+        val corridor = RouteCorridorSource { RouteCorridorResult.Available(corridorSnapshot) }
+        assertTrue(corridorRepository(corridor, nav = navigating, loc = moving).readStations() is ProductionStationRead.Available)
+        // A coordinator context from a moment earlier is the same trip too.
+        val repo = corridorRepository(corridor)
+        assertTrue(repo.readStationsFor(origin.copy(latitude = 36.999), destinationRoute.copy(remainingDistanceKm = 100.9))
+            is ProductionStationRead.Available)
+        // A new route identity or a different destination is never the same trip.
+        assertEquals(ProductionStationFailure.CONTEXT_CHANGED,
+            failure(repo.readStationsFor(origin, destinationRoute.copy(id = "rerouted"))))
+        assertEquals(ProductionStationFailure.CONTEXT_CHANGED,
+            failure(repo.readStationsFor(origin, destinationRoute.copy(destinationLatitude = 37.6))))
+        assertEquals(ProductionStationFailure.CONTEXT_CHANGED,
+            failure(repo.readStationsFor(origin, destinationRoute.copy(remainingDistanceKm = 102.0))))
+    }
+
+    @Test fun noRouteNeverAsksTheCorridor() = runTest {
+        val nearby = StationRoadMetrics { snapshot(it).copy(stations = listOf(metric.copy(alongRouteKm = null, detourMinutes = null))) }
+        val repo = createProductionStations(location, nav { RouteResult.Available(null) },
+            source { StationDiscoveryResult.Available(catalog) }, nearby, transform, StationFuel.GASOLINE,
+            epochSeconds = { 100 }, routeCorridor = RouteCorridorSource { error("Corridor needs a route") })
+        assertEquals(1, (repo.readStations() as ProductionStationRead.Available).stations.size)
+    }
+
     @Test fun cancellationPropagates() = runTest {
         val repo = repository(metrics = StationRoadMetrics { throw CancellationException("cancelled") })
         try { repo.readStations(); fail("Cancellation was swallowed") } catch (_: CancellationException) { /* expected */ }
@@ -138,6 +254,10 @@ class ProductionStationsTest {
 
     private val origin = VehicleLocation(37.0, 127.0)
     private val route = ActiveRoute("route", "destination", 100.0)
+    private val destinationRoute = route.copy(destinationLatitude = 37.4979, destinationLongitude = 127.0276)
+    private val corridorStation = CorridorStation("c1", "Corridor", StationFuel.GASOLINE, 1880.0, 37.45, 127.05,
+        11_900.0, 12_400.0, 610, 201)
+    private val corridorSnapshot = RouteCorridorSnapshot(95, 120, 90, 100_000.0, 5400, true, listOf(corridorStation))
     private val coordinates = StationCoordinates(CoordinateSystem.KATEC, 314681.8, 544837.0)
     private val rawStation = RawCatalogStation("a", "Station A", StationFuel.GASOLINE, 1700.0, coordinates, 25.0, null)
     private val catalog = RawStationCatalog(listOf(rawStation), 90, 200,
@@ -170,5 +290,12 @@ class ProductionStationsTest {
         nav: NavigationRepository = navigation,
         loc: LocationRepository = location,
     ) = createProductionStations(loc, nav, discovery, metrics, transform, StationFuel.GASOLINE, epochSeconds = { 100 })
+    private fun corridorRepository(
+        corridor: RouteCorridorSource,
+        nav: NavigationRepository = nav { RouteResult.Available(destinationRoute) },
+        loc: LocationRepository = location,
+    ) = createProductionStations(loc, nav, source { error("Route mode must not use the nearby catalog") },
+        StationRoadMetrics { error("Route mode must not use nearby trip previews") }, transform, StationFuel.GASOLINE,
+        epochSeconds = { 100 }, routeCorridor = corridor)
     private fun failure(read: ProductionStationRead) = (read as ProductionStationRead.Unavailable).reason
 }

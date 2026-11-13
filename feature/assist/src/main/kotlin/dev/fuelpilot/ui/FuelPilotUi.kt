@@ -23,9 +23,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
 import dev.fuelpilot.data.navigation.WaypointResult
+import dev.fuelpilot.data.poi.gateway.StationFuel
+import dev.fuelpilot.feature.assist.selectableFuels
 import dev.fuelpilot.feature.assist.AssistAvailability
 import dev.fuelpilot.feature.assist.AssistIntent
+import dev.fuelpilot.feature.assist.AssistSignal
 import dev.fuelpilot.feature.assist.AssistViewState
+import dev.fuelpilot.feature.assist.labels
+import dev.fuelpilot.feature.assist.onlyStationsMissing
 
 private val Graphite = FuelPilotColors.Surface
 private val Gold = FuelPilotColors.Gold
@@ -69,6 +74,8 @@ internal data class AdaptiveUiModel(
     /** Non-null only when the host contract can accept this exact recommendation now. */
     val actionableStationId: String?,
     val actionableRecommendationKey: String?,
+    /** Inputs that kept the presentation from READY; copy uses it to name the real cause. */
+    val blockedBy: Set<AssistSignal> = emptySet(),
 )
 
 /** Pure UI policy used by both Compose and state-focused tests. */
@@ -109,6 +116,7 @@ internal fun adaptiveUiModel(state: AssistViewState): AdaptiveUiModel {
         status,
         actionable,
         recommendationKey.takeIf { actionable != null },
+        presentation.blockedBy.takeIf { status in setOf(AdaptiveStatus.Stale, AdaptiveStatus.Unsupported, AdaptiveStatus.Unavailable) }.orEmpty(),
     )
 }
 
@@ -179,7 +187,7 @@ private fun FuelPilotContent(
             if (screen == Screen.Analysis) {
                 Analysis(state, route, maxWidth < 840.dp, model.actionableStationId, select, onEvent)
             } else if (screen == Screen.Settings) {
-                Settings(state, onEvent, viewState.persisted.minimumReserveKm, true)
+                Settings(state, onEvent, viewState.persisted.minimumReserveKm, true, viewState.persisted.fuelPreference)
             } else {
                 val wideParked = maxWidth >= 900.dp
                 Column(
@@ -316,10 +324,12 @@ private fun FuelPilotContent(
     onEvent: (AssistIntent) -> Unit,
 ) {
     val station = route.recommended
-    val intro = when (model.status) {
+    val stationsOnly = model.blockedBy.onlyStationsMissing() &&
+        model.status in setOf(AdaptiveStatus.Unsupported, AdaptiveStatus.Unavailable)
+    val intro = if (stationsOnly) "주유소 정보를 기다리고 있어요" else when (model.status) {
         AdaptiveStatus.Loading, AdaptiveStatus.Stale -> "잠시만요, 확인하고 있어요"
         AdaptiveStatus.Unsupported -> "여기서는 안내가 어려워요"
-        AdaptiveStatus.Unavailable -> "차량 정보를 확인해 주세요"
+        AdaptiveStatus.Unavailable -> if (model.blockedBy.isEmpty()) "차량 정보를 확인해 주세요" else "${model.blockedBy.labels()} 정보를 확인해 주세요"
         AdaptiveStatus.Error -> "다시 한번 확인해 볼까요?"
         AdaptiveStatus.Success -> "안내 준비가 끝났어요"
         AdaptiveStatus.Refuel -> "주유 완료를 확인했어요"
@@ -328,7 +338,7 @@ private fun FuelPilotContent(
     VehicleLayout(wide, { PodongIntro(intro, calm = true) }) {
         Panel(showIdentity = false, modifier = Modifier.testTag("state_${model.status.name.lowercase(Locale.ROOT)}")) {
             StatusRow(
-                label = when (model.status) {
+                label = if (stationsOnly) "주유소 미연결" else when (model.status) {
                     AdaptiveStatus.Loading -> "불러오는 중"
                     AdaptiveStatus.Stale -> "최신 정보 확인 중"
                     AdaptiveStatus.Unsupported -> "지원되지 않음"
@@ -341,12 +351,14 @@ private fun FuelPilotContent(
                 state = "P · 상세 기능 사용 가능",
                 alert = model.status in setOf(AdaptiveStatus.Error, AdaptiveStatus.Unsupported, AdaptiveStatus.Unavailable),
             )
-            state.statusMessage?.let { Text(it, color = if (model.status == AdaptiveStatus.Unsupported) Coral else White, fontSize = 24.sp, lineHeight = 33.sp) }
+            state.statusMessage?.let { Text(it, color = if (model.status == AdaptiveStatus.Unsupported && !stationsOnly) Coral else White, fontSize = 24.sp, lineHeight = 33.sp) }
             state.error?.let { Text(it, color = Coral, fontSize = 22.sp, lineHeight = 31.sp) }
             if (model.status in setOf(AdaptiveStatus.Loading, AdaptiveStatus.Stale)) {
                 LinearProgressIndicator(Modifier.fillMaxWidth(), color = Gold, trackColor = Line)
             }
-            if (model.status == AdaptiveStatus.Unsupported) {
+            if (stationsOnly) {
+                Text("주유소 데이터(공급자 API와 실제 도로 거리)가 연결되기 전에는 추천을 만들지 않아요. 임의의 주유소나 거리를 표시하지 않습니다.", color = Muted, fontSize = 20.sp, lineHeight = 29.sp)
+            } else if (model.status == AdaptiveStatus.Unsupported) {
                 Text("지원 SDK 또는 권한이 준비되기 전에는 실제 안내를 시작하지 않아요. 임의의 거리나 주유소를 표시하지 않습니다.", color = Muted, fontSize = 20.sp, lineHeight = 29.sp)
             }
             if (station != null && model.status == AdaptiveStatus.Recommendation) {
@@ -527,9 +539,40 @@ private fun FuelPilotContent(
     }
     HorizontalDivider(color = Line)
 }
-@Composable private fun Settings(state: FuelUiState, onEvent: (AssistIntent) -> Unit, reserve: Int, editable: Boolean) {
+private fun StationFuel.label() = when (this) {
+    StationFuel.GASOLINE -> "휘발유"
+    StationFuel.PREMIUM_GASOLINE -> "고급휘발유"
+    StationFuel.DIESEL -> "경유"
+    StationFuel.LPG -> "LPG"
+    StationFuel.KEROSENE -> "등유"
+}
+
+@Composable private fun Settings(state: FuelUiState, onEvent: (AssistIntent) -> Unit, reserve: Int, editable: Boolean, fuel: StationFuel?) {
     BoxWithConstraints(Modifier.fillMaxSize().testTag("settings_screen")) {
         val wide=maxWidth>=1000.dp
+        val fuelCard:@Composable ()->Unit={
+            SettingsCard {
+                Copy("연료 종류",28)
+                Text("차량이 연료 종류를 알려주면 그 정보를 먼저 써요. 알려주지 않을 때 여기서 고른 연료로 주유소를 찾아요.",
+                    color=Muted,fontSize=20.sp,lineHeight=29.sp)
+                selectableFuels.chunked(2).forEach { pair ->
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(14.dp)) {
+                        pair.forEach { option ->
+                            val selected = option == fuel
+                            Button(onClick={onEvent(AssistIntent.FuelChanged(option))},enabled=editable,
+                                modifier=Modifier.weight(1f).heightIn(min=76.dp).testTag("fuel_option_${option.providerCode}"),
+                                shape=RoundedCornerShape(99.dp),
+                                colors=if(selected) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(containerColor=Inset,contentColor=White),
+                                border=if(selected) null else BorderStroke(1.dp,Line)) {
+                                Text(if(selected) "✓ ${option.label()}" else option.label(),fontSize=22.sp)
+                            }
+                        }
+                    }
+                }
+                Text(fuel?.let { "선택: ${it.label()}" } ?: "아직 고르지 않았어요.",color=GoldText,fontSize=18.sp)
+                if(!editable) Text("차량의 정차 상태를 확인한 뒤 변경할 수 있어요.",color=Coral,fontSize=18.sp)
+            }
+        }
         val reserveCard:@Composable ()->Unit={
             SettingsCard(featured=true) {
                 Copy("주유 판단 여유거리",28)
@@ -572,8 +615,8 @@ private fun FuelPilotContent(
             }
             if(wide) Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(24.dp),verticalAlignment=Alignment.Top) {
                 Box(Modifier.weight(1f)){reserveCard()}
-                Box(Modifier.weight(1f)){motionCard()}
-            } else {reserveCard();motionCard()}
+                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(24.dp)){fuelCard();motionCard()}
+            } else {reserveCard();fuelCard();motionCard()}
             Text("캐릭터 모션은 무음이에요. 시스템 알림 소리는 차량의 알림 설정을 따라요.",color=Muted,fontSize=17.sp,lineHeight=26.sp)
         }
     }
@@ -595,7 +638,8 @@ private fun FuelPilotContent(
     CompositionLocalProvider(LocalPodongStill provides (!state.ui.characterEnabled || state.ui.reduceMotion)) {
         Box(modifier.fillMaxSize()) {
             SunsetBackdrop(Modifier.matchParentSize(),dimmed=true)
-            Settings(state.ui, { if (it == AssistIntent.Continue) onBack() else onIntent(it) }, state.persisted.minimumReserveKm, state.ready && state.ui.motion == Motion.Parked)
+            Settings(state.ui, { if (it == AssistIntent.Continue) onBack() else onIntent(it) }, state.persisted.minimumReserveKm,
+                state.ready && state.ui.motion == Motion.Parked, state.persisted.fuelPreference)
         }
     }
     }

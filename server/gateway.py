@@ -1,11 +1,14 @@
-"""Key-isolated Opinet catalog gateway. No route safety claims or CRS guesses."""
-from collections import OrderedDict
+"""Key-isolated station gateway: Opinet catalog (/discover) and, via server.corridor, stations along a
+Kakao-routed corridor (/route). No route safety claims or CRS guesses; keys never leave the server."""
+from collections import OrderedDict, deque
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+import ipaddress
 import json
 import math
 import os
+import re
 from pathlib import Path
 import sqlite3
 import threading
@@ -52,7 +55,7 @@ def validate_query(query):
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        # Never forward certkey to another URL/host, including provider redirects.
+        # Never forward the provider key to another URL/host, including provider redirects.
         raise ProviderFailure('PROVIDER_UNAVAILABLE')
 
 
@@ -76,8 +79,12 @@ class OpinetProvider:
     def configured(self):
         return bool(self._api_key and self._api_key.strip())
 
-    def discover(self, query):
-        params = dict(certkey=self._api_key, out='xml', x=query['x'], y=query['y'],
+    def discover(self, query, allow_empty=False):
+        """allow_empty: an empty <RESULT> means "no stations" only when the caller has independent proof the
+        key works (e.g. another sample in the same corridor returned rows); /discover never allows it."""
+        # The spec page names the key `certkey`, but the live service (checked 2026-11-13) returns an
+        # empty <RESULT/> for `certkey` and real rows only for `code`.
+        params = dict(code=self._api_key, out='xml', x=query['x'], y=query['y'],
                       radius=query['radiusMeters'], prodcd=query['fuel'], sort=2)
         url = 'https://www.opinet.co.kr/api/aroundAll.do?' + urllib.parse.urlencode(params)
         try:
@@ -89,6 +96,8 @@ class OpinetProvider:
                 raise ValueError('size or XML declaration')
             root = ET.fromstring(body)
             rows = list(root)
+            if allow_empty and root.tag == 'RESULT' and not rows:
+                return []
             if root.tag != 'RESULT' or not 1 <= len(rows) <= MAX_STATIONS or any(row.tag != 'OIL' for row in rows):
                 raise ValueError('schema')
             stations = []
@@ -117,32 +126,113 @@ class OpinetProvider:
 
 class SqliteQuota:
     """Persistent global quota shared across restarts/processes; attempts count too."""
-    def __init__(self, path, daily_limit=300):
-        if type(daily_limit) is not int or not 1 <= daily_limit <= 300:
-            raise ValueError('daily_limit must be 1..300')
+    def __init__(self, path, daily_limit=300, ceiling=300):
+        if type(daily_limit) is not int or not 1 <= daily_limit <= ceiling:
+            raise ValueError(f'daily_limit must be 1..{ceiling}')
         self.path, self.limit = str(path), daily_limit
         with closing(sqlite3.connect(self.path)) as db, db:
             db.execute('CREATE TABLE IF NOT EXISTS quota (id INTEGER PRIMARY KEY CHECK(id=1), day TEXT NOT NULL, calls INTEGER NOT NULL)')
 
-    def consume(self, now):
+    def consume(self, now, units=1, keep=0):
+        """Atomically reserve `units` calls, leaving at least `keep` of today's limit unreserved.
+        All or nothing: a reservation that does not fit consumes nothing."""
+        if type(units) is not int or units < 1 or type(keep) is not int or keep < 0:
+            raise ValueError('units/keep')
         day = datetime.fromtimestamp(now, timezone(timedelta(hours=9))).date().isoformat()
         with closing(sqlite3.connect(self.path, timeout=2)) as db, db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT day,calls FROM quota WHERE id=1').fetchone()
-            if row and (day < row[0] or (day == row[0] and row[1] >= self.limit)):
+            if row and day < row[0]:
                 return False
-            count = row[1] + 1 if row and row[0] == day else 1
-            db.execute('INSERT OR REPLACE INTO quota VALUES (1,?,?)', (day, count))
+            used = row[1] if row and row[0] == day else 0
+            if used + units > self.limit - keep:
+                return False
+            db.execute('INSERT OR REPLACE INTO quota VALUES (1,?,?)', (day, used + units))
             return True
+
+    def exhaust(self, now):
+        """Mark today's quota used up, e.g. when the provider has evidently stopped answering this key."""
+        day = datetime.fromtimestamp(now, timezone(timedelta(hours=9))).date().isoformat()
+        with closing(sqlite3.connect(self.path, timeout=2)) as db, db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT day,calls FROM quota WHERE id=1').fetchone()
+            if not (row and day < row[0]):
+                db.execute('INSERT OR REPLACE INTO quota VALUES (1,?,?)',
+                           (day, max(self.limit, row[1] if row and row[0] == day else 0)))
+
+
+class OpinetPool:
+    """Several Opinet keys, each with its own persistent daily quota. Reservations fill the first key with
+    room, so one build's searches all run on a single key. Keys never leave this object."""
+    def __init__(self, entries):
+        self._entries = [(provider, quota) for provider, quota in entries if provider.configured]
+
+    @property
+    def configured(self):
+        return bool(self._entries)
+
+    def reserve(self, now, units=1, keep=0, exclude=(), only=None):
+        """The provider whose quota took all `units`, or None when no single key has room."""
+        for provider, quota in self._entries:
+            if provider in exclude or (only is not None and provider is not only):
+                continue
+            if quota.consume(now, units=units, keep=keep):
+                return provider
+        return None
+
+    def exhaust(self, provider, now):
+        """Opinet answers a rejected key (e.g. one over its real daily limit, perhaps used elsewhere too) with an
+        empty result, indistinguishable from "no stations". Once another key proves stations exist where this
+        one returned none, this key is retired for the rest of the day so later requests go straight on."""
+        for candidate, quota in self._entries:
+            if candidate is provider:
+                quota.exhaust(now)
+
+
+class SlidingWindowLimiter:
+    """At most `limit` events per client in any `window_seconds`; memory bounded to `max_clients`."""
+    def __init__(self, limit, window_seconds, clock=time.monotonic, max_clients=10000):
+        self.limit, self.window, self.clock, self.max_clients = limit, window_seconds, clock, max_clients
+        self._events = OrderedDict()
+        self._lock = threading.Lock()
+
+    def allow(self, client):
+        now = self.clock()
+        with self._lock:
+            events = self._events.pop(client, None) or deque()
+            while events and now - events[0] >= self.window:
+                events.popleft()
+            allowed = len(events) < self.limit
+            if allowed:
+                events.append(now)
+            self._events[client] = events
+            while len(self._events) > self.max_clients:
+                self._events.popitem(last=False)
+            return allowed
+
+
+def client_key(address):
+    """Limiter key for an address: IPv4 as is, IPv6 by its /64, since one subscriber holds a whole /64 and could
+    otherwise rotate addresses to reset its limits. Raises ValueError for anything that is not an address."""
+    ip = ipaddress.ip_address(address)
+    if ip.version == 6:
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.ip_network(f'{ip}/64', strict=False))
+    return str(ip)
+
+
+def rate_limited():
+    return 429, dict(schemaVersion=1, status='unavailable', reason='RATE_LIMITED')
 
 
 class Gateway:
-    def __init__(self, provider, quota, clock=time.time):
-        self.provider, self.quota, self.clock = provider, quota, clock
+    def __init__(self, pool, clock=time.time, fetch_limiter=None):
+        self.pool, self.clock, self.fetch_limiter = pool, clock, fetch_limiter
         self._cache = OrderedDict()
         self._lock = threading.Lock()
 
-    def discover(self, query):
+    def discover(self, query, client=None):
         def error(code, reason):
             return code, dict(schemaVersion=1, status='unavailable', reason=reason)
         try:
@@ -151,7 +241,7 @@ class Gateway:
             return error(400, 'INVALID_QUERY')
         if query['coordinateSystem'] != 'KATEC':
             return error(503, 'COORDINATE_TRANSFORM_UNVERIFIED')
-        if not self.provider.configured:
+        if not self.pool.configured:
             return error(503, 'PROVIDER_UNCONFIGURED')
         key = json.dumps(query, sort_keys=True, allow_nan=False)
         with self._lock:
@@ -161,12 +251,12 @@ class Gateway:
                 result = dict(cached, provenance=dict(cached['provenance'], cacheHit=True))
                 return 200, result
             self._cache.pop(key, None)
+            if self.fetch_limiter is not None and not self.fetch_limiter.allow(client):
+                return rate_limited()
             try:
-                if not self.quota.consume(now):
-                    return error(429, 'QUOTA_EXHAUSTED')
-                stations = self.provider.discover(query)
+                stations = self._fetch(query, now)
             except ProviderFailure as failure:
-                return error(503, failure.reason)
+                return error(429 if failure.reason == 'QUOTA_EXHAUSTED' else 503, failure.reason)
             except Exception:
                 return error(503, 'PROVIDER_UNAVAILABLE')
             result = dict(schemaVersion=1, status='available', fetchedAtEpochSeconds=now,
@@ -179,6 +269,28 @@ class Gateway:
             return 200, result
 
 
+    def _fetch(self, query, now):
+        """An empty or malformed answer is retried once on the next key; if that key returns stations, the first
+        one is retired for today. Both failing keeps the first failure (an empty area costs one extra call)."""
+        first = self.pool.reserve(now)
+        if first is None:
+            raise ProviderFailure('QUOTA_EXHAUSTED')
+        try:
+            return first.discover(query)
+        except ProviderFailure as failure:
+            if failure.reason != 'PROVIDER_SCHEMA_INVALID':
+                raise
+            second = self.pool.reserve(now, exclude=(first,))
+            if second is None:
+                raise
+            try:
+                stations = second.discover(query)
+            except ProviderFailure:
+                raise failure from None
+            self.pool.exhaust(first, now)
+            return stations
+
+
 def strict_object(pairs):
     result = {}
     for key, value in pairs:
@@ -188,16 +300,51 @@ def strict_object(pairs):
     return result
 
 
-def handler_for(gateway):
+def handler_for(gateway, corridor=None, request_limiter=None, trust_proxy=False):
+    """trust_proxy: take the client address from CF-Connecting-IP. Only safe when the server listens on
+    loopback behind the Cloudflare tunnel, so no one else can set that header."""
+    routes = {'/v1/stations/discover': gateway.discover}
+    if corridor is not None:
+        routes['/v1/stations/route'] = corridor.measure
+
     class Handler(BaseHTTPRequestHandler):
         # Bind behind a TLS reverse proxy; suppress access logs/location/credential details.
         def log_message(self, format, *args):
             pass
 
+        def client(self):
+            if trust_proxy:
+                try:
+                    return client_key(self.headers.get('CF-Connecting-IP', '').strip())
+                except ValueError:
+                    pass
+            return client_key(self.client_address[0])
+
+        def reply(self, code, result):
+            payload = json.dumps(result, allow_nan=False).encode('utf-8')
+            self.send_response(code)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(payload)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_GET(self):
+            # Liveness only: no configuration, quota or key state is revealed.
+            if self.path != '/v1/health':
+                self.send_error(404)
+                return
+            self.reply(200, dict(schemaVersion=1, status='ok'))
+
         def do_POST(self):
             self.connection.settimeout(5)
-            if self.path != '/v1/stations/discover':
+            endpoint = routes.get(self.path)
+            if endpoint is None:
                 self.send_error(404)
+                return
+            client = self.client()
+            if request_limiter is not None and not request_limiter.allow(client):
+                self.reply(*rate_limited())
                 return
             try:
                 length = int(self.headers.get('Content-Length', '0'))
@@ -209,24 +356,47 @@ def handler_for(gateway):
                 if len(body) != length:
                     raise ValueError('truncated')
                 query = json.loads(body, object_pairs_hook=strict_object)
-                code, result = gateway.discover(query)
+                code, result = endpoint(query, client)
             except (ValueError, UnicodeError, TimeoutError):
                 code, result = 400, dict(schemaVersion=1, status='unavailable', reason='INVALID_QUERY')
-            payload = json.dumps(result, allow_nan=False).encode('utf-8')
-            self.send_response(code)
-            self.send_header('Content-Type', 'application/json; charset=utf-8')
-            self.send_header('Content-Length', str(len(payload)))
-            self.send_header('Cache-Control', 'no-store')
-            self.end_headers()
-            self.wfile.write(payload)
+            self.reply(code, result)
     return Handler
 
 
+OPINET_KEY_NAME = re.compile(r'OPINET_API_KEY(?:_([0-9]{1,2}))?')
+
+
+def opinet_pool_from_env(environ, data_dir):
+    """OPINET_API_KEY and OPINET_API_KEY_1.._99, each with its own quota file named by its slot (never the key)."""
+    entries = []
+    for name in sorted(environ, key=lambda n: (len(n), n)):
+        match = OPINET_KEY_NAME.fullmatch(name)
+        if match and environ[name].strip():
+            slot = match.group(1)
+            quota = SqliteQuota(data_dir / (f'opinet-quota-{slot}.sqlite' if slot else 'opinet-quota.sqlite'))
+            entries.append((OpinetProvider(environ[name]), quota))
+    return OpinetPool(entries)
+
+
 def main():
-    # Only the server reads this environment variable; never put it in app config.
-    provider = OpinetProvider(os.environ.get('OPINET_API_KEY', ''))
-    quota = SqliteQuota(Path(os.environ.get('WAYFILL_QUOTA_DB', 'opinet-quota.sqlite')))
-    HTTPServer(('127.0.0.1', 8787), handler_for(Gateway(provider, quota))).serve_forever()
+    from server.corridor import KakaoDirections, RouteCorridor
+    env = os.environ
+    # Only the server reads these environment variables; never put them in app config.
+    data_dir = Path(env.get('WAYFILL_DATA_DIR', '.'))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    pool = opinet_pool_from_env(env, data_dir)
+    routing = KakaoDirections(env.get('KAKAO_REST_API_KEY', ''))
+    # Kakao requests are metered too: one or two base routes plus one per measured station.
+    routing_quota = SqliteQuota(data_dir / 'routing-quota.sqlite',
+                                daily_limit=int(env.get('WAYFILL_ROUTING_DAILY_LIMIT', '1000')), ceiling=10000)
+    # Per client: plenty for a vehicle refreshing every 5 s, tight on the calls that cost provider quota.
+    gateway = Gateway(pool, fetch_limiter=SlidingWindowLimiter(120, 3600))
+    corridor = RouteCorridor(routing, pool, routing_quota, build_limiter=SlidingWindowLimiter(30, 3600))
+    handler = handler_for(gateway, corridor, request_limiter=SlidingWindowLimiter(1800, 3600),
+                          trust_proxy=env.get('WAYFILL_TRUST_PROXY') == 'true')
+    host, port = env.get('WAYFILL_HOST', '127.0.0.1'), int(env.get('WAYFILL_PORT', '8787'))
+    # Threaded: a corridor build takes seconds and must not stall /discover.
+    ThreadingHTTPServer((host, port), handler).serve_forever()
 
 
 if __name__ == '__main__':

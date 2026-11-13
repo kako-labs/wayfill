@@ -8,7 +8,7 @@ import android.content.pm.ServiceInfo
 import android.graphics.BitmapFactory
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import dev.fuelpilot.feature.assist.AssistAvailability
+import dev.fuelpilot.feature.assist.statusMessage
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
 
@@ -62,12 +62,7 @@ class MonitoringService : Service() {
                     app.monitoring.problem("권한 또는 위치 서비스가 꺼져 모니터링이 중단됐어요.")
                     stopSelf(); return@collect
                 }
-                val status = when (state.presentation.availability) {
-                    AssistAvailability.UNSUPPORTED -> "실제 차량 SDK 미연결 · 주유 안내를 제공할 수 없어요."
-                    AssistAvailability.STALE -> "최신 차량 정보를 기다리고 있어요."
-                    AssistAvailability.UNAVAILABLE -> "차량 정보를 확인할 수 없어요."
-                    AssistAvailability.READY -> "주유 시점을 확인하고 있어요."
-                }
+                val status = state.presentation.statusMessage() ?: "주유 시점을 확인하고 있어요."
                 val manager = getSystemService(NotificationManager::class.java)
                 try {
                     manager.notify(FOREGROUND_ID, ongoing(status))

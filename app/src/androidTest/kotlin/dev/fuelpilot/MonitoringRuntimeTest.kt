@@ -1,11 +1,13 @@
 package dev.fuelpilot
 
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.fuelpilot.data.location.PleosFusedLocationPort
 import dev.fuelpilot.feature.assist.AssistAvailability
 import dev.fuelpilot.feature.assist.AssistIntent
 import dev.fuelpilot.ui.Motion
@@ -23,16 +25,21 @@ class MonitoringRuntimeTest {
     private fun shell(command: String): String = ParcelFileDescriptor.AutoCloseInputStream(
         instrumentation.uiAutomation.executeShellCommand(command)).bufferedReader().use { it.readText() }
     private fun waitFor(predicate: () -> Boolean) = compose.waitUntil(10_000, predicate)
+    private fun currentUser() = shell("am get-current-user").trim()
     private var originalLocationEnabled = true
 
     @Before fun permissionsAndCleanService() {
         originalLocationEnabled = shell("cmd location is-location-enabled").trim() == "true"
         shell("cmd location set-location-enabled true")
         val name = instrumentation.targetContext.packageName
-        shell("pm grant $name android.permission.ACCESS_COARSE_LOCATION")
-        shell("pm grant $name android.permission.ACCESS_FINE_LOCATION")
-        if (Build.VERSION.SDK_INT >= 33) shell("pm grant $name android.permission.POST_NOTIFICATIONS")
-        shell("appops set $name POST_NOTIFICATION allow")
+        // `pm grant` defaults to user 0. Headless-system-user targets (PLEOS) run the app as another user.
+        val user = currentUser()
+        shell("pm grant --user $user $name android.permission.ACCESS_COARSE_LOCATION")
+        shell("pm grant --user $user $name android.permission.ACCESS_FINE_LOCATION")
+        if (Build.VERSION.SDK_INT >= 33) shell("pm grant --user $user $name android.permission.POST_NOTIFICATIONS")
+        if (instrumentation.targetContext.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE))
+            shell("pm grant --user $user $name ${PleosFusedLocationPort.FUSED_LOCATION_PERMISSION}")
+        shell("appops set --user $user $name POST_NOTIFICATION allow")
         compose.runOnIdle { app.monitoring.stop() }
         waitFor { app.runtime.state.value.ready }
         compose.runOnIdle { app.runtime.dispatch(AssistIntent.MotionChanged(Motion.Unknown)) }
@@ -47,7 +54,7 @@ class MonitoringRuntimeTest {
     @After fun stopAndRestoreDeviceSettings() {
         compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
         compose.runOnIdle { app.monitoring.stop() }
-        shell("appops set ${instrumentation.targetContext.packageName} POST_NOTIFICATION allow")
+        shell("appops set --user ${currentUser()} ${instrumentation.targetContext.packageName} POST_NOTIFICATION allow")
         shell("cmd location set-location-enabled $originalLocationEnabled")
     }
 

@@ -1,6 +1,7 @@
 package dev.fuelpilot.data.energy
 
 import android.car.Car
+import android.car.FuelType
 import android.car.VehicleGear
 import android.car.VehiclePropertyIds
 import android.car.drivingstate.CarUxRestrictions
@@ -29,7 +30,7 @@ class AaosVehiclePropertySource(
     private val maxConnectionAttempts: Int = 2,
     private val retryDelayMs: Long = 150L,
     private val safetyPollMs: Long = 1_000L,
-) : VehiclePropertySource {
+) : VehiclePropertySource, VehicleFuelTypeSource, FuelLevelSource {
     private val appContext = context.applicationContext
 
     init {
@@ -53,8 +54,66 @@ class AaosVehiclePropertySource(
             } catch (_: Exception) {
                 return@withCar VehicleSignal.Unavailable
             }
-            if (value.propertyStatus != CarPropertyValue.STATUS_AVAILABLE) VehicleSignal.Unavailable
+            if (!value.isAvailable()) VehicleSignal.Unavailable
             else VehicleSignal.Available(value.value, value.timestamp)
+        }
+    }
+
+    /** Static INFO_FUEL_TYPE. Unknown entries are dropped; an empty result is Unavailable, never a guess. */
+    override suspend fun readFuelTypes(): VehicleSignal<Set<VehicleFuelType>> {
+        if (!isAutomotive() || !hasPermission(Car.PERMISSION_CAR_INFO)) return VehicleSignal.Unsupported
+        return withCar { car ->
+            val manager = car.getCarManager(Car.PROPERTY_SERVICE) as? CarPropertyManager
+                ?: return@withCar VehicleSignal.Unsupported
+            val type = Array<Int>::class.java
+            val config = try { manager.getCarPropertyConfig(VehiclePropertyIds.INFO_FUEL_TYPE) }
+                catch (_: SecurityException) { return@withCar VehicleSignal.Unsupported }
+                catch (_: Exception) { return@withCar VehicleSignal.Unavailable }
+                ?: return@withCar VehicleSignal.Unsupported
+            if (config.propertyType != type) return@withCar VehicleSignal.Unsupported
+            val value = try {
+                manager.getProperty(type, VehiclePropertyIds.INFO_FUEL_TYPE, GLOBAL_AREA)
+            } catch (_: SecurityException) {
+                return@withCar VehicleSignal.Unsupported
+            } catch (_: Exception) {
+                return@withCar VehicleSignal.Unavailable
+            }
+            if (!value.isAvailable()) return@withCar VehicleSignal.Unavailable
+            val raw = (value.value as? Array<*>)?.filterIsInstance<Int>() ?: return@withCar VehicleSignal.Unavailable
+            val types = raw.mapNotNull { mapFuelType(it) }.toSet()
+            if (types.isEmpty()) VehicleSignal.Unavailable else VehicleSignal.Available(types, value.timestamp)
+        }
+    }
+
+    /** FUEL_LEVEL needs CAR_ENERGY, INFO_FUEL_CAPACITY needs CAR_INFO. An EV usually exposes neither. */
+    override suspend fun readFuelLevel(): VehicleSignal<FuelLevelSample> {
+        if (!isAutomotive() || !hasPermission(Car.PERMISSION_ENERGY) || !hasPermission(Car.PERMISSION_CAR_INFO)) {
+            return VehicleSignal.Unsupported
+        }
+        return withCar { car ->
+            val manager = car.getCarManager(Car.PROPERTY_SERVICE) as? CarPropertyManager
+                ?: return@withCar VehicleSignal.Unsupported
+            fun read(id: Int): VehicleSignal<Float> {
+                val config = try { manager.getCarPropertyConfig(id) }
+                    catch (_: SecurityException) { return VehicleSignal.Unsupported }
+                    catch (_: Exception) { return VehicleSignal.Unavailable }
+                    ?: return VehicleSignal.Unsupported
+                if (config.propertyType != Float::class.javaObjectType) return VehicleSignal.Unsupported
+                val value = try { manager.getProperty(Float::class.javaObjectType, id, GLOBAL_AREA) }
+                    catch (_: SecurityException) { return VehicleSignal.Unsupported }
+                    catch (_: Exception) { return VehicleSignal.Unavailable }
+                return if (value.isAvailable()) VehicleSignal.Available(value.value, value.timestamp) else VehicleSignal.Unavailable
+            }
+            val level = read(VehiclePropertyIds.FUEL_LEVEL)
+            val capacity = read(VehiclePropertyIds.INFO_FUEL_CAPACITY)
+            if (level is VehicleSignal.Available && capacity is VehicleSignal.Available) {
+                val sample = FuelLevelSample(level.value, capacity.value)
+                if (sample.capacityMl.isFinite() && sample.capacityMl > 0f && sample.levelMl.isFinite() &&
+                    sample.levelMl >= 0f && sample.levelMl <= sample.capacityMl * 1.05f
+                ) VehicleSignal.Available(sample, level.timestampNanos) else VehicleSignal.Unavailable
+            } else if (level == VehicleSignal.Unsupported || capacity == VehicleSignal.Unsupported) {
+                VehicleSignal.Unsupported
+            } else VehicleSignal.Unavailable
         }
     }
 
@@ -84,7 +143,7 @@ class AaosVehiclePropertySource(
         } catch (_: Exception) {
             return@withCar VehicleSignal.Unavailable
         }
-        if (value.propertyStatus != CarPropertyValue.STATUS_AVAILABLE) return@withCar VehicleSignal.Unavailable
+        if (!value.isAvailable()) return@withCar VehicleSignal.Unavailable
         val ux = readUxRestrictions(car)
         VehicleSignal.Available(
             VehicleSafetySnapshot(mapGear(value.value), ux.first, ux.second),
@@ -115,6 +174,10 @@ class AaosVehiclePropertySource(
                     throw cancelled
                 } catch (_: SecurityException) {
                     return VehicleSignal.Unsupported
+                } catch (_: LinkageError) {
+                    // The car library on the device can be older than compileSdk. Fail closed instead of
+                    // letting the Error escape and end the vehicle flow for the rest of the process.
+                    return VehicleSignal.Unsupported
                 } catch (_: Exception) {
                     if (attempt + 1 == maxConnectionAttempts) return VehicleSignal.Unavailable
                 } finally {
@@ -144,6 +207,11 @@ class AaosVehiclePropertySource(
         }
     }
 
+    // getPropertyStatus() exists only from API 35. PLEOS Connect v2.1 runs Android 14, where calling it
+    // throws NoSuchMethodError. getStatus() exists on both and reports the same STATUS_* values.
+    @Suppress("DEPRECATION")
+    private fun CarPropertyValue<*>.isAvailable() = status == CarPropertyValue.STATUS_AVAILABLE
+
     private fun isAutomotive() = appContext.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)
     private fun hasPermission(permission: String) = appContext.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
@@ -153,6 +221,21 @@ class AaosVehiclePropertySource(
         VehicleGear.GEAR_REVERSE -> GearSelection.REVERSE
         VehicleGear.GEAR_NEUTRAL -> GearSelection.NEUTRAL
         else -> GearSelection.OTHER
+    }
+
+    private fun mapFuelType(value: Int) = when (value) {
+        FuelType.UNLEADED -> VehicleFuelType.UNLEADED
+        FuelType.LEADED -> VehicleFuelType.LEADED
+        FuelType.DIESEL_1, FuelType.DIESEL_2 -> VehicleFuelType.DIESEL
+        FuelType.BIODIESEL -> VehicleFuelType.BIODIESEL
+        FuelType.E85 -> VehicleFuelType.E85
+        FuelType.LPG -> VehicleFuelType.LPG
+        FuelType.CNG -> VehicleFuelType.CNG
+        FuelType.LNG -> VehicleFuelType.LNG
+        FuelType.ELECTRIC -> VehicleFuelType.ELECTRIC
+        FuelType.HYDROGEN -> VehicleFuelType.HYDROGEN
+        FuelType.OTHER -> VehicleFuelType.OTHER
+        else -> null
     }
 
     private companion object { const val GLOBAL_AREA = 0 }

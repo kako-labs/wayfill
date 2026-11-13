@@ -2,21 +2,21 @@
 
 ## 정확한 저장 위치
 
-- 저장소: https://github.com/kako-labs/fuel-pilot (비공개)
+- 저장소: https://github.com/kako-labs/wayfill (비공개)
 - 현재 개발 브랜치: `integrate/podong-approved`
 - 이번 전체 인계 태그: `fuel-pilot-handoff-2026-11-11`
-- 영구 다운로드: https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-handoff-2026-11-11
-- 작업/검증 PR: https://github.com/kako-labs/fuel-pilot/pull/2
+- 영구 다운로드: https://github.com/kako-labs/wayfill/releases/tag/fuel-pilot-handoff-2026-11-11
+- 작업/검증 PR: https://github.com/kako-labs/wayfill/pull/2
 - 실제 앱 코드 검증 커밋: `0b8a725f2e4f02e8e743f26dc4c65665fc897fd6`
-- 해당 push CI: https://github.com/kako-labs/fuel-pilot/actions/runs/43027203547
-- 해당 PR CI: https://github.com/kako-labs/fuel-pilot/actions/runs/43027213434
+- 해당 push CI: https://github.com/kako-labs/wayfill/actions/runs/43027203547
+- 해당 PR CI: https://github.com/kako-labs/wayfill/actions/runs/43027213434
 
 저장소 기본 화면의 `main`은 초기 커밋이다. 최신 앱이 없다고 판단하지 말고 위 브랜치 또는 고정 Release를 연다. 11월 10일 `podong-ui-approved-2026-11-10`은 승인 UI 원본이며 이번 전체 앱 인계본과 구분한다. 기존 승인 태그는 변경하지 않았다.
 
 ## 새로 받기
 
 ```powershell
-git clone --branch integrate/podong-approved https://github.com/kako-labs/fuel-pilot.git fuel-pilot
+git clone --branch integrate/podong-approved https://github.com/kako-labs/wayfill.git fuel-pilot
 cd fuel-pilot
 git status
 git log -5 --oneline
@@ -27,12 +27,12 @@ git log -5 --oneline
 고정 인계본 자체가 필요하면 Release의 소스 ZIP을 받거나 태그를 별도 폴더로 clone한다. 태그 checkout에서 개발할 때는 새 작업 브랜치를 만든다.
 
 ```powershell
-git clone --branch fuel-pilot-handoff-2026-11-11 https://github.com/kako-labs/fuel-pilot.git fuel-pilot-20261111
+git clone --branch fuel-pilot-handoff-2026-11-11 https://github.com/kako-labs/wayfill.git fuel-pilot-20261111
 cd fuel-pilot-20261111
 git switch -c resume/fuel-pilot
 ```
 
-404 또는 검색 실패 시 저장소가 없다고 단정하지 않는다. 이 저장소에 권한이 있는 GitHub 계정으로 로그인한 뒤 `gh repo view kako-labs/fuel-pilot` 또는 위 주소를 직접 확인한다. 브라우저/연결 도구/CLI 계정이 서로 다를 수 있다. 비밀번호·토큰을 채팅이나 소스에 붙여넣지 않는다.
+404 또는 검색 실패 시 저장소가 없다고 단정하지 않는다. 이 저장소에 권한이 있는 GitHub 계정으로 로그인한 뒤 `gh repo view kako-labs/wayfill` 또는 위 주소를 직접 확인한다. 브라우저/연결 도구/CLI 계정이 서로 다를 수 있다. 비밀번호·토큰을 채팅이나 소스에 붙여넣지 않는다.
 
 ## 두 세션 공통으로 읽을 것
 
@@ -60,4 +60,4 @@ JDK17/Android SDK35와 필요한 네트워크 의존성은 새 노트북에서 �
 
 ## 다음 세션에 그대로 붙여넣기
 
-> kako-labs/fuel-pilot의 integrate/podong-approved 브랜치에서 이어가 줘. 기본 main에는 최신 앱이 없으니 그걸 보고 없다고 하지 마. fuel-pilot-handoff-2026-11-11 Release와 docs/CROSS-DEVICE-2026-11-11.md, CONTINUE-HERE.md를 먼저 읽어. UI 세션과 앱 개발 세션 인계 문서를 함께 확인하고 회사 노트북의 기존 변경을 보존해. 승인된 72프레임 뽀동이와 상태 처리를 유지하고 실제 Pleos/주유소/경로 데이터 연결을 이어가. 테스트 통과와 사람의 화면·실차 검증을 구분해서 기록해.
+> kako-labs/wayfill의 integrate/podong-approved 브랜치에서 이어가 줘. 기본 main에는 최신 앱이 없으니 그걸 보고 없다고 하지 마. fuel-pilot-handoff-2026-11-11 Release와 docs/CROSS-DEVICE-2026-11-11.md, CONTINUE-HERE.md를 먼저 읽어. UI 세션과 앱 개발 세션 인계 문서를 함께 확인하고 회사 노트북의 기존 변경을 보존해. 승인된 72프레임 뽀동이와 상태 처리를 유지하고 실제 Pleos/주유소/경로 데이터 연결을 이어가. 테스트 통과와 사람의 화면·실차 검증을 구분해서 기록해.

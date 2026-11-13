@@ -4,6 +4,7 @@ import dev.fuelpilot.model.ActiveRoute
 import dev.fuelpilot.model.NavigationTargetProvenance
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -55,12 +56,13 @@ class NavigationRepositoryTest {
         assertEquals(STATION_ID, result.stationId)
     }
 
-    @Test fun mapsVerifiedRouteMetersToKm() = runBlocking {
+    @Test fun mapsVerifiedRouteMetersToKmWithDestination() = runBlocking {
         val repository = PleosNavigationRepository(port(route = NaviRead.Available(
             NaviRouteSnapshot("Destination", 37.5, 127.0, 12_300.0, "route-token")
         )), { true }, { true })
 
-        assertEquals(RouteResult.Available(ActiveRoute("navi:route-token", "Destination", 12.3)), repository.readRoute())
+        assertEquals(RouteResult.Available(ActiveRoute("navi:route-token", "Destination", 12.3, 37.5, 127.0)),
+            repository.readRoute())
     }
 
     @Test fun navigationMutationRequiresVerifiedTargetAndSdkCallback() = runBlocking {
@@ -158,6 +160,29 @@ class NavigationRepositoryTest {
             .matches(coordinateOnly))
     }
 
+    @Test fun unreportedWaypointCoordinatesFallBackToTheNameAlone() {
+        // PLEOS returned WaypointInfo(name=주유소티파니블루, latitude=0.0, longitude=0.0, ...) for a real waypoint.
+        val station = target(name = "주유소티파니블루")
+        assertTrue(NavigationObservedTarget(0.0, 0.0, "주유소티파니블루", "", null, "").matches(station))
+        assertTrue(!NavigationObservedTarget(0.0, 0.0, "다른주유소", "", null, "").matches(station))
+        assertTrue(!NavigationObservedTarget(0.0, 0.0, "", "", null, "").matches(station))
+        // Reported coordinates still have to agree; a matching name cannot rescue a different place.
+        assertTrue(!NavigationObservedTarget(37.6, 127.0, "주유소티파니블루", "", null, "").matches(station))
+    }
+
+    @Test fun stationAlreadyOnTheRouteIsRecognisedEvenWithoutWaypointCoordinates(): Unit = runBlocking {
+        val fake = FakePort(NaviRead.Available(null), NaviCommandStatus.FAILED, true)
+        val repository = PleosNavigationRepository(fake, { true }, { true })
+        val station = target(name = "주유소티파니블루")
+        assertNull(repository.isWaypoint(station))
+        fake.waypoints = NaviRead.Available(listOf(NavigationObservedTarget(0.0, 0.0, "주유소티파니블루", "", null, "")))
+        assertEquals(true, repository.isWaypoint(station))
+        assertEquals(false, repository.isWaypoint(target(name = "다른주유소")))
+        fake.waypoints = NaviRead.Unavailable
+        assertNull(repository.isWaypoint(station))
+        assertNull(PleosNavigationRepository(fake, { false }, { true }).isWaypoint(station))
+    }
+
     private class FakePort(
         private val route: NaviRead<NaviRouteSnapshot?>,
         private val command: NaviCommandStatus,
@@ -165,6 +190,8 @@ class NavigationRepositoryTest {
     ) : NaviHelperPort {
         var lastTarget: NavigationTarget? = null
         var routeReads = 0
+        var waypoints: NaviRead<List<NavigationObservedTarget>> = NaviRead.Unsupported
+        override suspend fun readWaypoints() = waypoints
         override fun isSupported() = supported
         override suspend fun readRoute(): NaviRead<NaviRouteSnapshot?> {
             routeReads++

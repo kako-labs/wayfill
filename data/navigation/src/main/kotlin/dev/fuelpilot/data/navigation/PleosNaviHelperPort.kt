@@ -1,13 +1,18 @@
 package dev.fuelpilot.data.navigation
 
 import ai.pleos.playground.navi.constants.NaviErrorCode
+import ai.pleos.playground.navi.constants.NaviMode
+import ai.pleos.playground.navi.constants.RoutePointType
 import ai.pleos.playground.navi.constants.WaypointCmdType
 import ai.pleos.playground.navi.constants.WaypointIndex
 import ai.pleos.playground.navi.data.CurrentLocationInfo
 import ai.pleos.playground.navi.data.DestinationInfo
 import ai.pleos.playground.navi.data.RequestWaypointInfo
 import ai.pleos.playground.navi.data.RouteInfo
+import ai.pleos.playground.navi.data.RouteStartInfo
 import ai.pleos.playground.navi.data.RouteStateInfo
+import ai.pleos.playground.navi.data.TripInfo
+import ai.pleos.playground.navi.data.TripRequest
 import ai.pleos.playground.navi.data.WaypointChangedInfo
 import ai.pleos.playground.navi.data.WaypointInfo
 import ai.pleos.playground.navi.helper.NaviHelper
@@ -24,17 +29,25 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
+import kotlin.math.cos
+import kotlin.math.hypot
 
 class PleosNaviHelperPort(
     context: Context,
     private val operationTimeoutMs: Long = 4_000L,
     private val maxConnectionAttempts: Int = 2,
     private val retryDelayMs: Long = 150L,
+    /**
+     * Route changes complete only when the navigation starts guiding: about 6 s on the PLEOS emulator for both
+     * a new destination and an added waypoint. They are sent once, never retried, because a repeated request
+     * cancels the one in progress (a new destination) or adds a second stop (a waypoint).
+     */
+    private val routeCommandTimeoutMs: Long = 12_000L,
 ) : NaviHelperPort {
     private val appContext = context.applicationContext
     private val operations = Mutex()
 
-    init { require(operationTimeoutMs > 0 && maxConnectionAttempts > 0 && retryDelayMs >= 0) }
+    init { require(operationTimeoutMs > 0 && maxConnectionAttempts > 0 && retryDelayMs >= 0 && routeCommandTimeoutMs > 0) }
 
     override fun isSupported(): Boolean {
         if (!appContext.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) return false
@@ -62,7 +75,7 @@ class PleosNaviHelperPort(
             var destination: DestinationInfo? = null
             var currentLocation: CurrentLocationInfo? = null
             fun publishIfComplete() {
-                if (state?.isRouting == true) {
+                if (state?.let { routePhase(it.naviMode, it.isRouting) } == RoutePhase.GUIDING) {
                     val destinationInfo = destination ?: return
                     val current = currentLocation ?: return
                     if (current.routeId.isBlank()) complete(NaviRead.Unavailable)
@@ -72,8 +85,11 @@ class PleosNaviHelperPort(
             val listener = object : NaviHelperEventListener {
                 override fun onRouteStateInfo(routeStateInfo: RouteStateInfo) {
                     state = routeStateInfo
-                    if (!routeStateInfo.isRouting) complete(NaviRead.Available(null))
-                    else publishIfComplete()
+                    when (routePhase(routeStateInfo.naviMode, routeStateInfo.isRouting)) {
+                        RoutePhase.GUIDING -> publishIfComplete()
+                        RoutePhase.CALCULATING -> complete(NaviRead.Unavailable)
+                        RoutePhase.NONE -> complete(NaviRead.Available(null))
+                    }
                 }
 
                 override fun onDestinationInfo(destinationInfo: DestinationInfo) {
@@ -96,15 +112,22 @@ class PleosNaviHelperPort(
         }
     }
 
+    override suspend fun readWaypointCount(): NaviRead<Int> = when (val read = readWaypoints()) {
+        is NaviRead.Available -> NaviRead.Available(read.value.size)
+        NaviRead.Unavailable -> NaviRead.Unavailable
+        NaviRead.Unsupported -> NaviRead.Unsupported
+    }
+
     @SuppressLint("MissingPermission")
-    override suspend fun readWaypointCount(): NaviRead<Int> = operations.withLock {
+    override suspend fun readWaypoints(): NaviRead<List<NavigationObservedTarget>> = operations.withLock {
         if (!hasPermission(NAVI_ROUTE_PERMISSION)) return@withLock NaviRead.Unsupported
-        runWithRetries<NaviRead<Int>>(
+        runWithRetries<NaviRead<List<NavigationObservedTarget>>>(
             NaviRead.Unavailable, NaviRead.Unsupported, NaviRead.Unavailable,
         ) { complete, _, _ ->
             val listener = object : NaviHelperEventListener {
-                override fun onWayPointInfo(waypointInfo: List<WaypointInfo>) =
-                    complete(NaviRead.Available(waypointInfo.size))
+                override fun onWayPointInfo(waypointInfo: List<WaypointInfo>) = complete(NaviRead.Available(
+                    waypointInfo.map { NavigationObservedTarget(it.latitude, it.longitude, it.name, it.poiId, it.poiSubId, it.poiProvider) }
+                ))
                 override fun onError(errorCode: NaviErrorCode) = complete(NaviRead.Unavailable)
             }
             Session(listener) { it.getWaypointInfo() }
@@ -123,12 +146,17 @@ class PleosNaviHelperPort(
             NaviCommandStatus.TIMED_OUT,
             NaviCommandStatus.UNSUPPORTED,
             NaviCommandStatus.FAILED,
+            attempts = 1,
+            timeoutMs = routeCommandTimeoutMs,
         ) { complete, unsupported, failed ->
-            val requestSubmitted = AtomicBoolean(false)
+            // The navigation pushes the (still old) waypoint list while it reroutes; only the list read after
+            // it confirms this ADD at this index can settle the command.
+            val waypointAdded = AtomicBoolean(false)
             lateinit var helper: NaviHelper
             val listener = object : NaviHelperEventListener {
                 override fun onWaypointChanged(waypointChangedInfo: WaypointChangedInfo) {
                     if (waypointChangedInfo.cmdType == WaypointCmdType.ADD && waypointChangedInfo.index == waypointIndex) {
+                        waypointAdded.set(true)
                         try { helper.getWaypointInfo() }
                         catch (_: SecurityException) { unsupported() }
                         catch (_: Exception) { failed() }
@@ -136,7 +164,7 @@ class PleosNaviHelperPort(
                 }
 
                 override fun onWayPointInfo(waypointInfo: List<WaypointInfo>) {
-                    if (requestSubmitted.get()) complete(
+                    if (waypointAdded.get()) complete(
                         if (waypointInfo.getOrNull(index)?.matches(target) == true) NaviCommandStatus.SUCCEEDED
                         else NaviCommandStatus.FAILED
                     )
@@ -146,7 +174,6 @@ class PleosNaviHelperPort(
             }
             Session(listener) { connected ->
                 helper = connected
-                requestSubmitted.set(true)
                 helper.addWaypoint(target.toWaypoint(waypointIndex))
             }
         }
@@ -159,16 +186,22 @@ class PleosNaviHelperPort(
             NaviCommandStatus.TIMED_OUT,
             NaviCommandStatus.UNSUPPORTED,
             NaviCommandStatus.FAILED,
+            attempts = 1,
+            timeoutMs = routeCommandTimeoutMs,
         ) { complete, unsupported, failed ->
             val routingCompleted = AtomicBoolean(false)
             lateinit var helper: NaviHelper
+            fun confirmDestination() {
+                if (!routingCompleted.compareAndSet(false, true)) return
+                try { helper.getDestinationInfo() }
+                catch (_: SecurityException) { unsupported() }
+                catch (_: Exception) { failed() }
+            }
             val listener = object : NaviHelperEventListener {
-                override fun onRoutingCompleted() {
-                    routingCompleted.set(true)
-                    try { helper.getDestinationInfo() }
-                    catch (_: SecurityException) { unsupported() }
-                    catch (_: Exception) { failed() }
-                }
+                override fun onRoutingCompleted() = confirmDestination()
+
+                // PLEOS signals a new destination only by starting guidance (no onRoutingCompleted observed).
+                override fun onRouteStarted(routeStartInfo: RouteStartInfo) = confirmDestination()
 
                 override fun onDestinationInfo(destinationInfo: DestinationInfo) {
                     if (routingCompleted.get()) complete(
@@ -184,6 +217,67 @@ class PleosNaviHelperPort(
                 helper.requestRoute(target.toRoute())
             }
         }
+    }
+
+    /**
+     * NaviHelper.requestTrip previews a trip from the navigation's position without changing the route
+     * (checked on PLEOS Connect v2.1: route state identical before and after). TripInfo carries no request
+     * ID and is broadcast to every NaviHelper listener, so only a result whose destination point matches
+     * this request is accepted.
+     */
+    @SuppressLint("MissingPermission")
+    override suspend fun measureTrip(latitude: Double, longitude: Double): NaviRead<NaviTrip> = operations.withLock {
+        if (!hasPermission(NAVI_ROUTE_PERMISSION)) return@withLock NaviRead.Unsupported
+        if (!latitude.isFinite() || latitude !in -90.0..90.0 || !longitude.isFinite() || longitude !in -180.0..180.0)
+            return@withLock NaviRead.Unavailable
+        runWithRetries<NaviRead<NaviTrip>>(
+            NaviRead.Unavailable, NaviRead.Unsupported, NaviRead.Unavailable,
+        ) { complete, _, _ ->
+            val listener = object : NaviHelperEventListener {
+                override fun onTripInfo(tripInfo: TripInfo) {
+                    val destination = tripInfo.summary?.routePoints?.firstOrNull { it.pointType == RoutePointType.DESTINATION }
+                        ?: return
+                    if (!sameTarget(destination.latitude, destination.longitude, latitude, longitude)) return
+                    complete(
+                        if (tripInfo.distance >= 0 && tripInfo.eta >= 0) NaviRead.Available(NaviTrip(tripInfo.distance, tripInfo.eta))
+                        else NaviRead.Unavailable
+                    )
+                }
+
+                override fun onError(errorCode: NaviErrorCode) = complete(NaviRead.Unavailable)
+            }
+            Session(listener) { it.requestTrip(TripRequest(latitude, longitude, "", "", "")) }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    override suspend fun readCurrentLocation(): NaviRead<NaviPosition> = operations.withLock {
+        if (!hasPermission(NAVI_ROUTE_PERMISSION)) return@withLock NaviRead.Unsupported
+        runWithRetries<NaviRead<NaviPosition>>(
+            NaviRead.Unavailable, NaviRead.Unsupported, NaviRead.Unavailable,
+        ) { complete, _, _ ->
+            val listener = object : NaviHelperEventListener {
+                override fun onCurrentLocationInfo(currentLocationInfo: CurrentLocationInfo) {
+                    val lat = currentLocationInfo.latitude
+                    val lon = currentLocationInfo.longitude
+                    // (0, 0) is the uninitialised value, not a position.
+                    complete(
+                        if (lat.isFinite() && lat in -90.0..90.0 && lon.isFinite() && lon in -180.0..180.0 && (lat != 0.0 || lon != 0.0))
+                            NaviRead.Available(NaviPosition(lat, lon))
+                        else NaviRead.Unavailable
+                    )
+                }
+
+                override fun onError(errorCode: NaviErrorCode) = complete(NaviRead.Unavailable)
+            }
+            Session(listener) { it.getCurrentLocationInfo() }
+        }
+    }
+
+    private fun sameTarget(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Boolean {
+        val dLat = (aLat - bLat) * 111_320.0
+        val dLon = (aLon - bLon) * 111_320.0 * cos(Math.toRadians(bLat))
+        return hypot(dLat, dLon) <= TRIP_TARGET_TOLERANCE_METERS
     }
 
     private data class Session(
@@ -202,22 +296,25 @@ class PleosNaviHelperPort(
         timeoutResult: T,
         unsupportedResult: T,
         failureResult: T,
+        attempts: Int = maxConnectionAttempts,
+        timeoutMs: Long = operationTimeoutMs,
         create: ((T) -> Unit, () -> Unit, () -> Unit) -> Session,
     ): T {
-        repeat(maxConnectionAttempts) { attempt ->
-            when (val result = runSession(create)) {
+        repeat(attempts) { attempt ->
+            when (val result = runSession(timeoutMs, create)) {
                 is SessionAttempt.Completed -> return result.value
                 SessionAttempt.Unsupported -> return unsupportedResult
                 SessionAttempt.Failed -> return failureResult
-                SessionAttempt.TimedOut -> if (attempt + 1 < maxConnectionAttempts) delay(retryDelayMs)
+                SessionAttempt.TimedOut -> if (attempt + 1 < attempts) delay(retryDelayMs)
             }
         }
         return timeoutResult
     }
 
     private suspend fun <T> runSession(
+        timeoutMs: Long,
         create: ((T) -> Unit, () -> Unit, () -> Unit) -> Session,
-    ): SessionAttempt<T> = withTimeoutOrNull(operationTimeoutMs) {
+    ): SessionAttempt<T> = withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine { continuation ->
                 val finished = AtomicBoolean(false)
                 val helper = try { NaviHelper(appContext) } catch (_: Exception) {
@@ -300,5 +397,21 @@ class PleosNaviHelperPort(
         const val NAVI_SERVICE_PACKAGE = "ai.pleos.playground.service.navi"
         const val NAVI_ROUTE_PERMISSION = "pleos.car.permission.NAVI_ROUTE"
         const val NAVI_SEARCH_PERMISSION = "pleos.car.permission.NAVI_ROUTE_SEARCH"
+        /** The returned destination point may be snapped to a road; a station request never moves this far. */
+        const val TRIP_TARGET_TOLERANCE_METERS = 500.0
     }
+}
+
+internal enum class RoutePhase { GUIDING, CALCULATING, NONE }
+
+/**
+ * `isRouting` only means a route is being calculated: during live guidance PLEOS reports
+ * naviMode=ROUTE_GUIDING with isRouting=false (checked on the PLEOS emulator, 2026-11-13). An active route is
+ * therefore the guiding mode; free drive (SAFE_GUIDING) or an idle navigation is confirmed no route, and a
+ * calculation in progress is not yet known either way.
+ */
+internal fun routePhase(mode: NaviMode, isRouting: Boolean): RoutePhase = when {
+    mode == NaviMode.ROUTE_GUIDING || mode == NaviMode.SIMULATION_GUIDING -> RoutePhase.GUIDING
+    isRouting -> RoutePhase.CALCULATING
+    else -> RoutePhase.NONE
 }

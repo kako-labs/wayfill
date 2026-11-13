@@ -1,6 +1,6 @@
 # Submission draft — evidence must be attached before delivery
 
-Confirmed submission identity: **WAYFILL · KA&KO · leader 송호현 · 2 members · general division**. Personal contact details and signatures stay outside this repository.
+Confirmed submission identity: **WAYFILL · KA&KO · a team leader and 2 members in total · general division**. Personal contact details and signatures stay outside this repository.
 
 This folder prepares a reviewable WAYFILL submission. It does not certify CI, emulator, provider, or vehicle execution. Fill in the checklist with actual logs and commit identifiers after integration.
 

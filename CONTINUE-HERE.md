@@ -1,9 +1,9 @@
 # 현재 이어갈 위치 · 2026-11-13
 
-확정 디자인의 최신 GitHub 인계 브랜치는 `feature/prepleos-hardening-20261113`이다. [팀원 인계 문서](docs/TEAMMATE-PLEOS-HANDOFF-2026-11-13.md), [현재 제품 인계](docs/PRE-PLEOS-READINESS-2026-11-13.md), [PLEOS 상황 흐름 시뮬레이터](web/pleos-scenario-simulator.html), [화면 모음](docs/screen-gallery.html), [다른 기기 이동](docs/CROSS-DEVICE-2026-11-13.md)을 먼저 읽는다. [11월 13일 최신 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/wayfill-prepleos-handoff-2026-11-13) 또는 다음 Git 명령으로 받는다. 아래 과거 브랜치·Release는 이전 기록이다.
+확정 디자인의 최신 GitHub 인계 브랜치는 `feature/prepleos-hardening-20261113`이다. [팀원 인계 문서](docs/TEAMMATE-PLEOS-HANDOFF-2026-11-13.md), [현재 제품 인계](docs/PRE-PLEOS-READINESS-2026-11-13.md), [PLEOS 상황 흐름 시뮬레이터](web/pleos-scenario-simulator.html), [화면 모음](docs/screen-gallery.html), [다른 기기 이동](docs/CROSS-DEVICE-2026-11-13.md)을 먼저 읽는다. [11월 13일 최신 Release](https://github.com/kako-labs/wayfill/releases/tag/wayfill-prepleos-handoff-2026-11-13) 또는 다음 Git 명령으로 받는다. 아래 과거 브랜치·Release는 이전 기록이다.
 
 ```powershell
-git clone --branch feature/prepleos-hardening-20261113 --single-branch https://github.com/kako-labs/fuel-pilot.git wayfill
+git clone --branch feature/prepleos-hardening-20261113 --single-branch https://github.com/kako-labs/wayfill.git wayfill
 cd wayfill
 git log -2 --oneline
 ```
@@ -14,13 +14,13 @@ git log -2 --oneline
 
 # WAYFILL 이어가기 · 2026-11-11
 
-**찾지 못했던 문제를 막기 위한 고정 진입점:** [전체 인계 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-handoff-2026-11-11)와 [다른 노트북 인계 문서](docs/CROSS-DEVICE-2026-11-11.md)를 먼저 확인한다. 기본 `main`은 초기 상태이며 현재 앱은 `integrate/podong-approved`에 있다.
+**찾지 못했던 문제를 막기 위한 고정 진입점:** [전체 인계 Release](https://github.com/kako-labs/wayfill/releases/tag/fuel-pilot-handoff-2026-11-11)와 [다른 노트북 인계 문서](docs/CROSS-DEVICE-2026-11-11.md)를 먼저 확인한다. 기본 `main`은 초기 상태이며 현재 앱은 `integrate/podong-approved`에 있다.
 
 ## 최신 코드 받기
 
 ```powershell
-git clone https://github.com/kako-labs/fuel-pilot.git
-cd fuel-pilot
+git clone https://github.com/kako-labs/wayfill.git
+cd wayfill
 git switch --track origin/integrate/podong-approved
 git log -3 --oneline
 python scripts/dev.py doctor
@@ -38,7 +38,7 @@ Task 6의 복원 초기 Unknown/무효 버퍼 요청 오류를 고쳤다. 저장
 
 ## 다음 코드 세션에 전달
 
-> kako-labs/fuel-pilot의 integrate/podong-approved 최신 코드를 받고 AGENTS.md, CONTINUE-HERE.md, docs/handoff.md, docs/ANDROID-INTEGRATION.md를 먼저 읽어줘. 승인 UI는 유지해. AppDependencies의 실제 Pleos 포트 연결이 다음 단계야. 실제 차량 주행 가능 거리와 정차 상태, 활성 내비 경로, 취소 가능한 경유지 추가 응답을 확인하고, 다음으로 실제 주유소 데이터와 검증된 주유 이벤트를 연결해줘. SDK/권한이 없으면 Unsupported를 유지하고, 시연 값을 운영 데이터로 대체하지 마. 실차 검증과 에뮬레이터 검증을 구분해 기록해줘.
+> kako-labs/wayfill의 integrate/podong-approved 최신 코드를 받고 AGENTS.md, CONTINUE-HERE.md, docs/handoff.md, docs/ANDROID-INTEGRATION.md를 먼저 읽어줘. 승인 UI는 유지해. AppDependencies의 실제 Pleos 포트 연결이 다음 단계야. 실제 차량 주행 가능 거리와 정차 상태, 활성 내비 경로, 취소 가능한 경유지 추가 응답을 확인하고, 다음으로 실제 주유소 데이터와 검증된 주유 이벤트를 연결해줘. SDK/권한이 없으면 Unsupported를 유지하고, 시연 값을 운영 데이터로 대체하지 마. 실차 검증과 에뮬레이터 검증을 구분해 기록해줘.
 
 운영 연결은 `FuelPilotApplication.dependencies`에서 한다. `NavigationCapabilities`와 `WaypointRequest.mode`를 확인하고, 주유소는 `createProductionStations`에 실제 차량 연료·검증된 좌표 변환·도로 거리 포트를 전달한다. `providerDistanceMeters`를 경로 거리로 복사하지 않는다. debug 앱 홈의 ‘시연 모드 · 예시 데이터’는 운영 데이터와 별도이며 release에서는 사용할 수 없다. 상세 계약은 [데이터 공급자 문서](docs/data-provider.md)에 있다.
 

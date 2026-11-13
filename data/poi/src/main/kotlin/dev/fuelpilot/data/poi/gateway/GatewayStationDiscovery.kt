@@ -15,11 +15,13 @@ import org.json.JSONTokener
 /** Only a public gateway origin belongs in app config. There is deliberately no credential field. */
 class GatewayConfig(origin: String) {
     val endpoint: String
+    val routeEndpoint: String
     init {
         val uri = URI(origin)
         require(uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null &&
             uri.rawQuery == null && uri.rawFragment == null && uri.path in listOf("", "/"))
         endpoint = origin.trimEnd('/') + "/v1/stations/discover"
+        routeEndpoint = origin.trimEnd('/') + "/v1/stations/route"
     }
 }
 data class GatewayHttpResponse(val status: Int, val body: String)
@@ -36,39 +38,46 @@ data class GatewayDocument(
 )
 
 object HttpsGatewayTransport : GatewayTransport {
-    override fun post(endpoint: String, json: String): GatewayHttpResponse {
-        val connection = URL(endpoint).openConnection() as HttpsURLConnection
-        try {
-            connection.instanceFollowRedirects = false
-            connection.connectTimeout = 4000
-            connection.readTimeout = 4000
-            connection.requestMethod = "POST"
-            connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("Accept", "application/json")
-            val payload = json.toByteArray(Charsets.UTF_8)
-            connection.setFixedLengthStreamingMode(payload.size)
-            connection.outputStream.use { it.write(payload) }
-            val status = connection.responseCode
-            if (status != 200 && status != 503) return GatewayHttpResponse(status, "")
-            require(connection.contentType?.substringBefore(';')?.trim() == "application/json")
-            val stream = if (status == 200) connection.inputStream else connection.errorStream
-            val bytes = requireNotNull(stream).use { input ->
-                val output = ByteArrayOutputStream()
-                val buffer = ByteArray(8192)
-                while (true) {
-                    val count = input.read(buffer, 0, minOf(buffer.size, 262145 - output.size()))
-                    if (count == -1) break
-                    output.write(buffer, 0, count)
-                    require(output.size() <= 262144)
-                }
-                output.toByteArray()
+    override fun post(endpoint: String, json: String): GatewayHttpResponse = httpsPost(endpoint, json, 4000)
+}
+
+/** A corridor is built from several provider calls, so it may take longer than one catalog read. */
+object HttpsCorridorTransport : GatewayTransport {
+    override fun post(endpoint: String, json: String): GatewayHttpResponse = httpsPost(endpoint, json, 15000)
+}
+
+internal fun httpsPost(endpoint: String, json: String, readTimeoutMs: Int): GatewayHttpResponse {
+    val connection = URL(endpoint).openConnection() as HttpsURLConnection
+    try {
+        connection.instanceFollowRedirects = false
+        connection.connectTimeout = 4000
+        connection.readTimeout = readTimeoutMs
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.setRequestProperty("Accept", "application/json")
+        val payload = json.toByteArray(Charsets.UTF_8)
+        connection.setFixedLengthStreamingMode(payload.size)
+        connection.outputStream.use { it.write(payload) }
+        val status = connection.responseCode
+        if (status != 200 && status != 503) return GatewayHttpResponse(status, "")
+        require(connection.contentType?.substringBefore(';')?.trim() == "application/json")
+        val stream = if (status == 200) connection.inputStream else connection.errorStream
+        val bytes = requireNotNull(stream).use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            while (true) {
+                val count = input.read(buffer, 0, minOf(buffer.size, 262145 - output.size()))
+                if (count == -1) break
+                output.write(buffer, 0, count)
+                require(output.size() <= 262144)
             }
-            require(bytes.size <= 262144)
-            return GatewayHttpResponse(status, bytes.toString(Charsets.UTF_8))
-        } finally {
-            connection.disconnect()
+            output.toByteArray()
         }
+        require(bytes.size <= 262144)
+        return GatewayHttpResponse(status, bytes.toString(Charsets.UTF_8))
+    } finally {
+        connection.disconnect()
     }
 }
 
@@ -138,9 +147,7 @@ class GatewayStationDiscovery(
             require(response.status == 200 && doc.status == "available")
             val fetched = requireNotNull(doc.fetchedAtEpochSeconds)
             val expires = requireNotNull(doc.expiresAtEpochSeconds)
-            val now = epochSeconds()
-            if (now >= expires) return unavailable(DiscoveryFailure.STALE)
-            require(fetched >= 0 && fetched <= now && expires > fetched && expires - fetched <= 300)
+            val window = localWindow(fetched, expires, epochSeconds(), 300) ?: return unavailable(DiscoveryFailure.STALE)
             val provenance = requireNotNull(doc.provenance)
             require(provenance.provider == "OPINET" && provenance.endpoint == "aroundAll" &&
                 provenance.coordinateSystem == CoordinateSystem.KATEC && !provenance.roadMetricsVerified)
@@ -152,7 +159,8 @@ class GatewayStationDiscovery(
                 require(row.providerDistanceMeters.isFinite() && row.providerDistanceMeters in 0.0..100000.0)
                 require(row.priceObservedAtEpochSeconds == null)
             }
-            return StationDiscoveryResult.Available(RawStationCatalog(doc.stations.toList(), fetched, expires, provenance))
+            return StationDiscoveryResult.Available(RawStationCatalog(doc.stations.toList(),
+                window.fetchedAtEpochSeconds, window.expiresAtEpochSeconds, provenance))
         } catch (_: TimeoutCancellationException) {
             return unavailable(DiscoveryFailure.NETWORK)
         } catch (cancelled: CancellationException) {

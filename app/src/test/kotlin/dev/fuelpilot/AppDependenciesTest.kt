@@ -55,6 +55,39 @@ class AppDependenciesTest {
         assertEquals(AssistAvailability.READY,result.availability)
     }
 
+    @Test fun aStationAlreadyAddedAsWaypointIsShownAsDoneNotOfferedAgain() = runTest {
+        var onRoute = true
+        val base = routePort()
+        val navigation = object : NavigationRepository by base {
+            override suspend fun isWaypoint(target: NavigationTarget): Boolean? { assertEquals("a", target.stationId); return onRoute }
+        }
+        val deps = fixture(navigation = navigation)
+        val added = deps.coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertNull(added.recommendationKey)
+        assertEquals("a", added.waypointStationId)
+        assertEquals("a", added.route.recommended?.id)
+        onRoute = false
+        val offered = deps.coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertNotNull(offered.recommendationKey)
+        assertNull(offered.waypointStationId)
+    }
+
+    @Test fun unknownFuelIsReportedAsASettingsTaskNotAStationOutage() = runTest {
+        val base = fixture()
+        val noStations = object : ContextualStationRepository {
+            override suspend fun findStations(): StationResult = StationResult.Unavailable
+            override suspend fun findStationsFor(origin: VehicleLocation, route: ActiveRoute?) = StationResult.Unavailable
+        }
+        fun deps(fuel: dev.fuelpilot.data.poi.gateway.StationFuel?) = AppDependencies(base.store, base.energy, base.location,
+            noStations, base.navigation, base.vehicleEvents, stationFuel = { fuel })
+        val unknown = deps(null).coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertEquals(setOf(AssistSignal.FUEL_TYPE), unknown.blockedBy)
+        assertEquals("차량이 연료 종류를 알려주지 않아요. 설정에서 연료를 고르면 안내할게요.", unknown.statusMessage())
+        val known = deps(dev.fuelpilot.data.poi.gateway.StationFuel.GASOLINE).coordinator().readIntents()
+            .filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertEquals(setOf(AssistSignal.STATIONS), known.blockedBy)
+    }
+
     @Test fun changedRouteOrUnknownWaypointCapacityNeverCallsNavigator() = runTest {
         for (capabilities in listOf(
             NavigationCapabilities(true, true, 2, 0, "different-route"),
@@ -171,6 +204,35 @@ class AppDependenciesTest {
             .filterIsInstance<AssistIntent.PresentationChanged>().single().value
         assertEquals(AssistAvailability.UNSUPPORTED, unsupported.availability)
         assertNull(unsupported.route.recommended)
+    }
+
+    @Test fun missingStationSourceIsNamedWithoutBlamingTheVehicle() = runTest {
+        val p = fixture(stations = object : StationRepository {
+            override suspend fun findStations() = StationResult.Unavailable
+        }).coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertEquals(AssistAvailability.UNAVAILABLE, p.availability)
+        assertEquals(setOf(AssistSignal.STATIONS), p.blockedBy)
+        assertEquals("차량과 경로는 확인했어요. 주유소 정보가 연결되면 안내할게요.", p.statusMessage())
+    }
+
+    @Test fun unqueriedContextualStationsAreNotBlamedForAMissingLocation() = runTest {
+        val base = fixture()
+        val stations = object : ContextualStationRepository {
+            override suspend fun findStations(): StationResult = error("Context-free query must not be used")
+            override suspend fun findStationsFor(origin: VehicleLocation, route: ActiveRoute?): StationResult = error("Not queried without location")
+        }
+        val location = object : LocationRepository { override suspend fun readLocation() = LocationResult.Unavailable }
+        val p = AppDependencies(base.store, base.energy, location, stations, base.navigation, base.vehicleEvents)
+            .coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertEquals(setOf(AssistSignal.LOCATION), p.blockedBy)
+        assertEquals("현재 위치 정보를 확인할 수 없어요.", p.statusMessage())
+    }
+
+    @Test fun readyPresentationHasNoBlockedSignals() = runTest {
+        val p = fixture().coordinator().readIntents().filterIsInstance<AssistIntent.PresentationChanged>().single().value
+        assertEquals(AssistAvailability.READY, p.availability)
+        assertTrue(p.blockedBy.isEmpty())
+        assertNull(p.statusMessage())
     }
 
     @Test fun stalePoiAndPermissionFailureExposeNoStaleRecommendation() = runTest {

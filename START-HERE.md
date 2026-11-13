@@ -2,22 +2,22 @@
 
 > **2026-11-13 현재 작업본:** 제품명은 WAYFILL이다. 현재 제품 모션은 `web/sunset-motion-review.html`의 calm + 네 가지 32포즈 표현 모션이며, 과거 `animation-lab.html`의 72프레임은 역사 참고용이다. 실제 PLEOS 연결 전 흐름은 `web/pleos-scenario-simulator.html`, 남은 연결 경계는 `docs/PRE-PLEOS-READINESS-2026-11-13.md`, 제출 영상 구성은 `docs/WAYFILL-VIDEO-STORYBOARD.md`를 먼저 본다.
 
-**최신 전체 앱은 [2026-11-11 고정 인계 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-handoff-2026-11-11)에 있습니다. [기기 간 인계 문서](docs/CROSS-DEVICE-2026-11-11.md)의 clone 명령과 다음 세션용 문장을 사용하세요.** 아래 11월 10일 Release는 승인 UI 원본입니다.
+**최신 전체 앱은 [2026-11-11 고정 인계 Release](https://github.com/kako-labs/wayfill/releases/tag/fuel-pilot-handoff-2026-11-11)에 있습니다. [기기 간 인계 문서](docs/CROSS-DEVICE-2026-11-11.md)의 clone 명령과 다음 세션용 문장을 사용하세요.** 아래 11월 10일 Release는 승인 UI 원본입니다.
 
 WAYFILL의 승인된 문구와 뽀동이 모션을 화면과 코드로 묶었습니다.
 
 **최신 앱 개발은 [CONTINUE-HERE.md](CONTINUE-HERE.md)와 integrate/podong-approved 브랜치에서 이어갑니다.** 아래 고정 태그/ZIP은 11월 10일 승인 UI 원본입니다. 현재 네이티브 코드는 feature/assist로 통합됐습니다.
 
-최신 앱·소스 전달은 [통합 PR #2](https://github.com/kako-labs/fuel-pilot/pull/2)와 해당 커밋의 CI `review-builds-and-source` 아티팩트를 확인합니다. 홈/설정/서비스/네이티브 시연의 실제 검증과 남은 외부 연결은 [제품 준비 기록](docs/product-readiness-2026-11-11.md)에 있습니다. UI 원본 태그와 현재 개발 브랜치를 구분해 받으세요.
+최신 앱·소스 전달은 [통합 PR #2](https://github.com/kako-labs/wayfill/pull/2)와 해당 커밋의 CI `review-builds-and-source` 아티팩트를 확인합니다. 홈/설정/서비스/네이티브 시연의 실제 검증과 남은 외부 연결은 [제품 준비 기록](docs/product-readiness-2026-11-11.md)에 있습니다. UI 원본 태그와 현재 개발 브랜치를 구분해 받으세요.
 
 ## 1. 받기
 
-[승인 버전 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/podong-ui-approved-2026-11-10)에서 `fuel-pilot-ui-kit-20261110.zip`을 받아 압축을 풀면 됩니다. 저장소는 비공개이므로 접근 권한이 있는 GitHub 계정으로 로그인하세요. ZIP에는 웹 UI, 모션 파일, Android 소스 모듈과 빌드된 AAR, 두 세션 인계 문서가 함께 있습니다.
+[승인 버전 Release](https://github.com/kako-labs/wayfill/releases/tag/podong-ui-approved-2026-11-10)에서 `fuel-pilot-ui-kit-20261110.zip`을 받아 압축을 풀면 됩니다. 저장소는 비공개이므로 접근 권한이 있는 GitHub 계정으로 로그인하세요. ZIP에는 웹 UI, 모션 파일, Android 소스 모듈과 빌드된 AAR, 두 세션 인계 문서가 함께 있습니다.
 
 Git으로 받을 때도 아래 고정 태그를 지정하면 다른 기기에서 같은 승인본을 받습니다. 태그 checkout은 고정 스냅샷이므로 수정하기 전에 새 브랜치를 만듭니다.
 
 ```powershell
-git clone --branch podong-ui-approved-2026-11-10 https://github.com/kako-labs/fuel-pilot.git fuel-pilot-approved
+git clone --branch podong-ui-approved-2026-11-10 https://github.com/kako-labs/wayfill.git fuel-pilot-approved
 cd fuel-pilot-approved
 git switch -c integrate/podong-approved
 ```

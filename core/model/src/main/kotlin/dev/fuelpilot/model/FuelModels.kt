@@ -28,6 +28,9 @@ data class ActiveRoute(
     val id: String,
     val destinationName: String,
     val remainingDistanceKm: Double,
+    /** WGS84 destination from the navigation itself; null when the source does not expose it. */
+    val destinationLatitude: Double? = null,
+    val destinationLongitude: Double? = null,
 )
 
 /** Source proof carried with a WGS84 station coordinate; arbitrary coordinates are not navigation-ready. */

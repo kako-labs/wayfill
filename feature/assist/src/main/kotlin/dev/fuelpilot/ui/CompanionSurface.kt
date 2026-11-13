@@ -24,7 +24,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.fuelpilot.feature.assist.AssistIntent
+import dev.fuelpilot.feature.assist.AssistSignal
 import dev.fuelpilot.feature.assist.AssistViewState
+import dev.fuelpilot.feature.assist.labels
+import dev.fuelpilot.feature.assist.onlyStationsMissing
 import java.util.Locale
 
 object FuelPilotColors {
@@ -106,8 +109,9 @@ private val KoreanBoundary = Regex("(?<=[가-힣])(?=[가-힣])")
                         state.motion==Motion.Unknown->"차량 연결을 기다리고 있어요"
                         model.status==AdaptiveStatus.Loading->"주유 안내를 준비하고 있어요"
                         model.status==AdaptiveStatus.Stale->"최신 정보를 확인하고 있어요"
-                        model.status==AdaptiveStatus.Unsupported->"차량 연결이 필요해요"
-                        model.status==AdaptiveStatus.Unavailable->"차량 정보를 기다리고 있어요"
+                        model.blockedBy.onlyStationsMissing() && model.status in setOf(AdaptiveStatus.Unsupported,AdaptiveStatus.Unavailable)->"주유소 정보를 기다리고 있어요"
+                        model.status==AdaptiveStatus.Unsupported->if(model.blockedBy.isEmpty()) "차량 연결이 필요해요" else "${model.blockedBy.labels()} 연결이 필요해요"
+                        model.status==AdaptiveStatus.Unavailable->if(model.blockedBy.isEmpty()) "차량 정보를 기다리고 있어요" else "${model.blockedBy.labels()} 정보를 기다리고 있어요"
                         model.status==AdaptiveStatus.Pending->"내비게이션에 전달했어요"
                         model.status==AdaptiveStatus.Success->"주유소 경로가 준비됐어요"
                         model.status==AdaptiveStatus.Refuel->"주유 완료를 확인했어요"
@@ -128,8 +132,12 @@ private val KoreanBoundary = Regex("(?<=[가-힣])(?=[가-힣])")
                     if(!shortWindow && (state.motion==Motion.Unknown || model.status in setOf(AdaptiveStatus.Loading,AdaptiveStatus.Stale,AdaptiveStatus.Unsupported,AdaptiveStatus.Unavailable))) {
                         Surface(color=Color.Transparent,shape=RoundedCornerShape(16.dp),border=BorderStroke(1.dp,FuelPilotColors.Line)) {
                             Column(Modifier.background(FuelPilotColors.Glass).fillMaxWidth().padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                                for(label in listOf("차량 연료","현재 경로")) Row(Modifier.fillMaxWidth()) {
-                                    Label(label,18,Modifier.weight(1f),color=FuelPilotColors.Muted,lines=1); Label("확인 대기",16,color=FuelPilotColors.Gold,lines=1)
+                                // Name what was actually confirmed; with no known cause every row stays "확인 대기".
+                                val known=state.motion!=Motion.Unknown && model.blockedBy.isNotEmpty()
+                                for(signal in listOf(AssistSignal.VEHICLE_ENERGY,AssistSignal.ROUTE,AssistSignal.STATIONS)) Row(Modifier.fillMaxWidth().testTag("signal_${signal.name.lowercase()}")) {
+                                    val confirmed=known && signal !in model.blockedBy
+                                    Label(signal.label,18,Modifier.weight(1f),color=FuelPilotColors.Muted,lines=1)
+                                    Label(if(confirmed) "확인됨" else if(known && signal==AssistSignal.STATIONS) "연결 필요" else "확인 대기",16,color=if(confirmed) FuelPilotColors.Muted else FuelPilotColors.Gold,lines=1)
                                 }
                             }
                         }
@@ -218,6 +226,8 @@ private val KoreanBoundary = Regex("(?<=[가-힣])(?=[가-힣])")
                             }
                             CompanionButton("나중에","${actionPrefix}_later",false,Modifier.fillMaxWidth()) { onIntent(AssistIntent.Continue) }
                         }
+                        if(state.ui.routeStation!=null && state.ui.routeStation==route.recommended?.id)
+                            Label("경유지로 안내 중이에요",22,Modifier.align(Alignment.CenterHorizontally).testTag("${actionPrefix}_on_route"),color=FuelPilotColors.Gold,bold=true,lines=1)
                         Label("설정한 여유거리 ${state.persisted.minimumReserveKm} km",18,Modifier.align(Alignment.CenterHorizontally),color=FuelPilotColors.Muted,lines=1)
                     }
                 }

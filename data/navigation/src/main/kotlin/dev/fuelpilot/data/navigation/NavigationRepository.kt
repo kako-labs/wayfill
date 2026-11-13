@@ -48,6 +48,14 @@ data class NavigationObservedTarget(
     val poiProvider: String?,
 )
 
+/**
+ * PLEOS reports a waypoint's coordinates as 0.0/0.0 (seen on the PLEOS emulator, NaviHelper service 3.0.4,
+ * 2026-11-13) while its name, address and remaining distance are real. Exactly 0/0 — far outside any road
+ * this app routes to — is therefore read as "not reported", and the name alone must then match.
+ */
+internal val NavigationObservedTarget.coordinatesReported: Boolean
+    get() = !(latitude == 0.0 && longitude == 0.0)
+
 internal fun NavigationObservedTarget.matches(target: NavigationTarget): Boolean {
     val expectedPoiId = target.poiId?.takeIf(String::isNotBlank)
     val expectedProvider = target.poiProvider?.takeIf(String::isNotBlank)
@@ -59,6 +67,7 @@ internal fun NavigationObservedTarget.matches(target: NavigationTarget): Boolean
         return true
     }
     if (expectedProvider != null && !poiProvider.isNullOrBlank() && poiProvider != expectedProvider) return false
+    if (!coordinatesReported) return compatibleName(name, target.name)
     if (!latitude.isFinite() || !longitude.isFinite()) return false
     return distanceMeters(latitude, longitude, target.latitude, target.longitude) <= COORDINATE_FALLBACK_METERS &&
         compatibleName(name, target.name)
@@ -128,6 +137,8 @@ interface NavigationRepository {
     suspend fun addWaypoint(request: WaypointRequest): WaypointResult
     suspend fun setDestination(request: WaypointRequest): WaypointResult = WaypointResult.Unsupported(request.requestId, request.stationId)
     suspend fun capabilities(): NavigationCapabilities = NavigationCapabilities()
+    /** Whether [target] is already a waypoint of the active route; null when the navigation cannot say. */
+    suspend fun isWaypoint(target: NavigationTarget): Boolean? = null
 }
 
 object UnsupportedNavigationRepository : NavigationRepository {
@@ -157,12 +168,23 @@ sealed interface NaviRead<out T> {
 
 enum class NaviCommandStatus { SUCCEEDED, FAILED, TIMED_OUT, UNSUPPORTED }
 
+/** Road distance and time the vehicle navigation computed from its own current position. */
+data class NaviTrip(val distanceMeters: Int, val etaSeconds: Int)
+
+/** The vehicle navigation's own current position: the origin its routing and trip previews use. */
+data class NaviPosition(val latitude: Double, val longitude: Double)
+
 interface NaviHelperPort {
     fun isSupported(): Boolean
     suspend fun readRoute(): NaviRead<NaviRouteSnapshot?>
     suspend fun readWaypointCount(): NaviRead<Int>
     suspend fun addWaypoint(target: NavigationTarget, index: Int): NaviCommandStatus
     suspend fun setDestination(target: NavigationTarget): NaviCommandStatus
+    /** Side-effect-free trip preview to one point; the active route is not changed. */
+    suspend fun measureTrip(latitude: Double, longitude: Double): NaviRead<NaviTrip> = NaviRead.Unsupported
+    suspend fun readCurrentLocation(): NaviRead<NaviPosition> = NaviRead.Unsupported
+    /** The active route's waypoints as the navigation reports them (PLEOS leaves their coordinates 0/0). */
+    suspend fun readWaypoints(): NaviRead<List<NavigationObservedTarget>> = NaviRead.Unsupported
 }
 
 class PleosNavigationRepository(
@@ -176,6 +198,14 @@ class PleosNavigationRepository(
             is NaviRead.Available -> read.value?.let(::mapRoute) ?: RouteResult.Available(null)
             NaviRead.Unavailable -> RouteResult.Unavailable
             NaviRead.Unsupported -> RouteResult.Unsupported
+        }
+    }
+
+    override suspend fun isWaypoint(target: NavigationTarget): Boolean? {
+        if (!port.isSupported() || !hasRoutePermission()) return null
+        return when (val read = port.readWaypoints()) {
+            is NaviRead.Available -> read.value.any { it.matches(target) }
+            NaviRead.Unavailable, NaviRead.Unsupported -> null
         }
     }
 
@@ -245,7 +275,8 @@ class PleosNavigationRepository(
             snapshot.remainingDistanceMeters < 0.0 || snapshot.routeToken.isBlank()
         ) return RouteResult.Unavailable
         return RouteResult.Available(
-            ActiveRoute(routeId(snapshot), snapshot.destinationName, snapshot.remainingDistanceMeters / 1000.0)
+            ActiveRoute(routeId(snapshot), snapshot.destinationName, snapshot.remainingDistanceMeters / 1000.0,
+                snapshot.destinationLatitude, snapshot.destinationLongitude)
         )
     }
 

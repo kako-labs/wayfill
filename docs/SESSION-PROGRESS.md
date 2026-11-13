@@ -95,7 +95,7 @@ JVM 169 / 일반 Android instrumentation 27 / 웹 24 / 개발 도구 29 / 서버
 
 ## GitHub 인계 게시 · 사용자 후속 승인
 
-제품 코드 기준 aebf43a 이후 변경은 수령 안내 문서뿐이다. 브랜치 `product/soft-sunset-prepleos-20261113`을 push하고 [최신 Release](https://github.com/kako-labs/fuel-pilot/releases/tag/fuel-pilot-soft-sunset-2026-11-13)로 전체 전달본을 게시한다. 원격 새 clone의 Git 파일 해시와 Release 다운로드 체크섬을 별도 확인한다. 이전 전체 테스트 결과는 코드 변경이 없어 재사용한다. 기본 main은 변경하지 않는다.
+제품 코드 기준 aebf43a 이후 변경은 수령 안내 문서뿐이다. 브랜치 `product/soft-sunset-prepleos-20261113`을 push하고 [최신 Release](https://github.com/kako-labs/wayfill/releases/tag/fuel-pilot-soft-sunset-2026-11-13)로 전체 전달본을 게시한다. 원격 새 clone의 Git 파일 해시와 Release 다운로드 체크섬을 별도 확인한다. 이전 전체 테스트 결과는 코드 변경이 없어 재사용한다. 기본 main은 변경하지 않는다.
 
 ## 2026-11-13 PLEOS 상황 흐름 시뮬레이터
 
@@ -123,6 +123,6 @@ Motion Care 참고 영상의 3분 10초 구조를 분석해 WAYFILL 2분 30초 �
 
 ## 2026-11-13 팀원 인계 확정
 
-공모전 등록 정보를 `WAYFILL · KA&KO · 대표자 송호현 · 2명 · 일반 부문`으로 확정했다. 실제 PLEOS 연결 담당자가 받을 순서와 필수 시나리오, 돌려줄 증거, 금지 사항을 `docs/TEAMMATE-PLEOS-HANDOFF-2026-11-13.md`에 고정했다. 최신 인계 브랜치는 `feature/prepleos-hardening-20261113`이며 과거 `product/soft-sunset-prepleos-20261113` Release와 구분한다.
+공모전 등록 정보를 `WAYFILL · KA&KO · 대표자 1명 포함 2명 · 일반 부문`으로 확정했다. 실제 PLEOS 연결 담당자가 받을 순서와 필수 시나리오, 돌려줄 증거, 금지 사항을 `docs/TEAMMATE-PLEOS-HANDOFF-2026-11-13.md`에 고정했다. 최신 인계 브랜치는 `feature/prepleos-hardening-20261113`이며 과거 `product/soft-sunset-prepleos-20261113` Release와 구분한다.
 
 인계 직전 재검사에서 `doctor`, Node 30개, 패키지 검증, 개발 도구 29개, 서버 9개가 통과했다. `python scripts/dev.py verify`는 `NaviHelper:3.0.5`를 받는 두 Maven 주소의 PKIX 인증서 오류로 중단됐고, 오프라인 재시도는 같은 의존성이 캐시에 없어 `data:navigation` 컴파일 전에 중단됐다. 실패를 통과로 바꾸지 않으며 원격 CI가 정확한 인계 커밋을 새로 검증해야 한다.

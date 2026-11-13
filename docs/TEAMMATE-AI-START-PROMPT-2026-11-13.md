@@ -4,7 +4,7 @@
 
 ```text
 이 저장소는 현대차 앱 공모전 일반 부문 출품작 WAYFILL입니다.
-팀명은 KA&KO이고 대표자는 송호현이며 팀원은 2명입니다.
+팀명은 KA&KO이고 대표자 포함 2명입니다.
 
 feature/prepleos-hardening-20261113 브랜치의 최신 커밋에서 작업하세요.
 작업을 시작하기 전에 AGENTS.md와 START-HERE.md와 docs/APPROVED-BASELINE.md와 docs/APP-SESSION-HANDOFF.md와 docs/ANDROID-INTEGRATION.md와 docs/TEAMMATE-PLEOS-HANDOFF-2026-11-13.md를 전부 읽으세요.

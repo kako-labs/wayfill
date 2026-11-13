@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- PLEOS TextToSpeech 3.3.1 -> ai.pleos.playground.security:universal-access 0.6.0 -> jna 5.13.0.
+         Only its x86_64 libjnidispatch.so is not 16 KB aligned. PLEOS Connect targets are arm64 Android 14
+         (4 KB pages), and the library is not ours to rebuild. Scoped to that artifact only; re-check when
+         the PLEOS SDK updates JNA. -->
+    <issue id="Aligned16KB">
+        <ignore path="**/jna-5.13.0/**" />
+    </issue>
+</lint>
